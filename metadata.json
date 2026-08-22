@@ -1,0 +1,6 @@
+{
+  "name": "WebRunzo Platform Demo",
+  "description": "Complete WebRunzo platform featuring Public Marketing Website, Template Marketplace, Admin SaaS Dashboard, and Client Portal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
