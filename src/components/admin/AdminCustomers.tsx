@@ -19,7 +19,12 @@ import {
   Building2,
   Mail,
   Phone,
-  Calendar
+  Calendar,
+  Power,
+  Globe,
+  ShieldAlert,
+  Wrench,
+  Lock
 } from 'lucide-react';
 
 export const AdminCustomers: React.FC = () => {
@@ -33,6 +38,7 @@ export const AdminCustomers: React.FC = () => {
     addCustomer,
     deleteCustomer,
     updateCustomerStatus,
+    toggleWebsiteStatus,
     openPreviewModal
   } = useApp();
 
@@ -49,10 +55,15 @@ export const AdminCustomers: React.FC = () => {
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [customDomain, setCustomDomain] = useState('');
   const [planId, setPlanId] = useState(plans[1]?.id || 'plan-pro');
   const [templateId, setTemplateId] = useState(templates[0]?.id || 'tpl-biz-1');
   const [accountStatus, setAccountStatus] = useState<CustomerStatus>('Active');
   const [notes, setNotes] = useState('');
+
+  // Website Shutdown Modal State
+  const [shutdownModalCustomer, setShutdownModalCustomer] = useState<Customer | null>(null);
+  const [shutdownNoticeInput, setShutdownNoticeInput] = useState('');
 
   const filteredCustomers = useMemo(() => {
     return customers
@@ -63,6 +74,7 @@ export const AdminCustomers: React.FC = () => {
           c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           c.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
           c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (c.customDomain && c.customDomain.toLowerCase().includes(searchQuery.toLowerCase())) ||
           c.websiteUrl.toLowerCase().includes(searchQuery.toLowerCase());
         return matchesStatus && matchesPlan && matchesSearch;
       })
@@ -84,11 +96,14 @@ export const AdminCustomers: React.FC = () => {
     e.preventDefault();
     if (!name || !businessName || !email) return;
 
-    const newCust = addCustomer({
+    addCustomer({
       name,
       businessName,
       email,
       phone,
+      customDomain: customDomain.trim() || undefined,
+      dnsStatus: customDomain.trim() ? 'Active' : undefined,
+      sslStatus: customDomain.trim() ? 'Active' : undefined,
       planId,
       templateId,
       accountStatus,
@@ -103,7 +118,29 @@ export const AdminCustomers: React.FC = () => {
     setBusinessName('');
     setEmail('');
     setPhone('');
+    setCustomDomain('');
     setNotes('');
+  };
+
+  const handleToggleWebsite = (cust: Customer) => {
+    if (cust.websiteStatus === 'Suspended') {
+      // Direct Activate
+      toggleWebsiteStatus(cust.id);
+    } else {
+      // Open Shutdown Modal with customizable notice
+      setShutdownModalCustomer(cust);
+      setShutdownNoticeInput(
+        cust.maintenanceNotice ||
+        `${cust.businessName}'s website is temporarily undergoing scheduled maintenance and system optimization. Normal service will resume shortly.`
+      );
+    }
+  };
+
+  const handleConfirmShutdown = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shutdownModalCustomer) return;
+    toggleWebsiteStatus(shutdownModalCustomer.id, shutdownNoticeInput.trim() || undefined);
+    setShutdownModalCustomer(null);
   };
 
   return (
@@ -269,18 +306,51 @@ export const AdminCustomers: React.FC = () => {
                         </span>
                       </td>
 
-                      {/* Website Status */}
+                      {/* Website Status & Live Control */}
                       <td className="p-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`w-2 h-2 rounded-full ${
-                            cust.websiteStatus === 'Live' ? 'bg-emerald-400 animate-pulse' :
-                            cust.websiteStatus === 'In Progress' ? 'bg-amber-400' :
-                            'bg-slate-400'
-                          }`} />
-                          <span className="font-semibold text-slate-300">{cust.websiteStatus}</span>
-                        </div>
-                        <div className="text-[10px] font-mono text-slate-400 truncate max-w-[130px] mt-0.5">
-                          {cust.websiteUrl}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${
+                              cust.websiteStatus === 'Live' ? 'bg-emerald-400 animate-pulse' :
+                              cust.websiteStatus === 'Suspended' ? 'bg-rose-500' :
+                              cust.websiteStatus === 'In Progress' ? 'bg-amber-400' :
+                              'bg-slate-400'
+                            }`} />
+                            <span className={`font-bold text-xs ${
+                              cust.websiteStatus === 'Live' ? 'text-emerald-400' :
+                              cust.websiteStatus === 'Suspended' ? 'text-rose-400' :
+                              cust.websiteStatus === 'In Progress' ? 'text-amber-400' :
+                              'text-slate-300'
+                            }`}>
+                              {cust.websiteStatus === 'Suspended' ? 'Shut Down' : cust.websiteStatus}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleToggleWebsite(cust)}
+                              className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition flex items-center gap-1 border cursor-pointer ${
+                                cust.websiteStatus === 'Suspended'
+                                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
+                                  : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border-rose-500/40'
+                              }`}
+                              title={cust.websiteStatus === 'Suspended' ? 'Activate website to restore public access' : 'Shut down website to show maintenance notice'}
+                            >
+                              <Power className="w-2.5 h-2.5" />
+                              <span>{cust.websiteStatus === 'Suspended' ? 'Activate' : 'Shut Down'}</span>
+                            </button>
+                          </div>
+
+                          <div className="text-[10px] font-mono text-slate-400 truncate max-w-[140px]">
+                            {cust.customDomain ? (
+                              <span className="text-emerald-400 flex items-center gap-1 truncate" title={cust.customDomain}>
+                                <Lock className="w-2.5 h-2.5 shrink-0" />
+                                <span>{cust.customDomain}</span>
+                              </span>
+                            ) : (
+                              cust.websiteUrl
+                            )}
+                          </div>
                         </div>
                       </td>
 
@@ -443,6 +513,26 @@ export const AdminCustomers: React.FC = () => {
                     ))}
                   </select>
                 </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Custom Domain / CNAME (Optional)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal">e.g. clientbusiness.com</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={customDomain}
+                    onChange={(e) => setCustomDomain(e.target.value)}
+                    placeholder="e.g. zenithdental.com or www.client.com"
+                    className="w-full p-2.5 rounded-xl border border-slate-800 bg-slate-950 text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    If provided, auto-binds DNS routing to edge proxy and queues SSL verification.
+                  </p>
+                </div>
               </div>
 
               <div>
@@ -469,6 +559,77 @@ export const AdminCustomers: React.FC = () => {
                   className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md"
                 >
                   Save & Provision Customer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Website Shutdown & Maintenance Notice Modal */}
+      {shutdownModalCustomer && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl shadow-2xl p-6 text-white space-y-5 animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold">
+                  <Power className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-rose-400">Shut Down Client Website</h3>
+                  <p className="text-xs text-slate-400">{shutdownModalCustomer.businessName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShutdownModalCustomer(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmShutdown} className="space-y-4 text-xs">
+              <div className="p-3.5 rounded-2xl bg-rose-950/30 border border-rose-500/30 space-y-1.5 text-rose-200">
+                <div className="font-bold flex items-center gap-1.5 text-rose-300">
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>Immediate Public Traffic Interruption</span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  When shut down, this client&apos;s live website ({shutdownModalCustomer.websiteUrl}) will immediately return an offline maintenance screen with your custom message below.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Custom Maintenance Notice (Visible to Visitors)
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={shutdownNoticeInput}
+                  onChange={(e) => setShutdownNoticeInput(e.target.value)}
+                  placeholder="e.g. This website is temporarily undergoing scheduled maintenance. We will be back shortly."
+                  className="w-full p-3 rounded-xl border border-slate-800 bg-slate-950 text-white focus:ring-2 focus:ring-rose-500 focus:outline-none resize-none"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Visitors on desktop and mobile will see this notice alongside business hotline & email fallback details.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShutdownModalCustomer(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-md shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>Confirm & Shut Down Website</span>
                 </button>
               </div>
             </form>

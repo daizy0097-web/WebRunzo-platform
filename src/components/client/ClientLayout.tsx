@@ -37,8 +37,10 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
     session, 
     logout, 
     setCurrentExperience,
+    setPublicPage,
     settings,
     openPreviewModal,
+    openConciergeModal,
     templates,
     plans,
     orders,
@@ -50,12 +52,19 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const customer = currentClientCustomer;
-  const isVip = isPremiumClient || customer?.clientTier === 'premium' || session.role === 'premium_client';
+  const isVip = isPremiumClient || customer?.clientTier === 'premium' || session.role === 'premium_client' || clientTab.startsWith('premium-');
   const currentPlan = plans.find((p) => p.id === customer?.planId);
   const currentTemplate = templates.find((t) => t.id === customer?.templateId);
 
   const myOrdersCount = orders.filter((o) => o.customerId === customer?.id && o.status !== 'Completed').length;
   const myOpenTickets = tickets.filter((t) => (t.customerId === customer?.id || t.email === customer?.email) && t.status === 'Open').length;
+
+  const handleNavClick = (id: ClientTab) => {
+    setClientTab(id);
+    if (id === 'support') {
+      openConciergeModal();
+    }
+  };
 
   const baseNavItems: { id: ClientTab; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'dashboard', label: 'My Portal Home', icon: LayoutDashboard },
@@ -146,7 +155,7 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
             return (
               <button
                 key={item.id}
-                onClick={() => setClientTab(item.id)}
+                onClick={() => handleNavClick(item.id)}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? isVip 
@@ -181,7 +190,7 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setClientTab(item.id)}
+                    onClick={() => handleNavClick(item.id)}
                     className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                       isActive
                         ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25'
@@ -220,11 +229,10 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
             <div className="text-[10px] text-slate-500 font-mono">
               Hours: {availability.hoursSummary}
             </div>
-            <a
-              href={`https://wa.me/${settings.whatsAppNumber.replace(/[^0-9]/g, '')}`}
-              target="_blank"
-              rel="noreferrer"
-              className={`block text-center py-2 rounded-xl text-white text-[11px] font-bold transition shadow ${
+            <button
+              type="button"
+              onClick={openConciergeModal}
+              className={`w-full block text-center py-2 rounded-xl text-white text-[11px] font-bold transition shadow cursor-pointer ${
                 availability.status === 'Online'
                   ? 'bg-emerald-600 hover:bg-emerald-500'
                   : availability.status === 'Away'
@@ -233,7 +241,7 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
               }`}
             >
               Chat on WhatsApp ({availability.status})
-            </a>
+            </button>
           </div>
 
           <div className="flex items-center justify-between pt-1">
@@ -283,7 +291,7 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
             <button
               key={item.id}
               onClick={() => {
-                setClientTab(item.id);
+                handleNavClick(item.id);
                 setMobileMenuOpen(false);
               }}
               className={`w-full flex items-center justify-between p-2.5 rounded-lg font-semibold ${
@@ -301,7 +309,7 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
                 <button
                   key={item.id}
                   onClick={() => {
-                    setClientTab(item.id);
+                    handleNavClick(item.id);
                     setMobileMenuOpen(false);
                   }}
                   className={`w-full flex items-center justify-between p-2.5 rounded-lg font-semibold ${
@@ -342,9 +350,44 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
           </div>
         </header>
 
-        {/* Content View */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {children}
+        {/* Content View with Footer */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto flex flex-col justify-between">
+          <div className="flex-1">
+            {children}
+          </div>
+
+          {/* Client Portal Footer with Legal Links */}
+          <footer className="mt-12 pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <span>&copy; {new Date().getFullYear()} WebRunzo Managed Digital Solutions. All rights reserved.</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-[11px]">
+              <button
+                id="btn-client-footer-privacy"
+                type="button"
+                onClick={() => setPublicPage('privacy')}
+                className="hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                Privacy Policy
+              </button>
+              <button
+                id="btn-client-footer-terms"
+                type="button"
+                onClick={() => setPublicPage('terms')}
+                className="hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                Terms of Service
+              </button>
+              <button
+                id="btn-client-footer-sla"
+                type="button"
+                onClick={() => setPublicPage('sla')}
+                className="hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                Service Level Agreement (SLA)
+              </button>
+            </div>
+          </footer>
         </main>
       </div>
 

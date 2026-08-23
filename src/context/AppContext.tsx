@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   Template,
   Plan,
@@ -37,6 +37,8 @@ import {
 } from '../data/mockData';
 
 export type Experience = 'public' | 'admin' | 'client';
+export type PublicPage = 'home' | 'privacy' | 'terms' | 'sla';
+
 export type AdminTab = 
   | 'dashboard' 
   | 'customers' 
@@ -87,6 +89,8 @@ interface AppContextType {
   // Navigation & Auth
   currentExperience: Experience;
   setCurrentExperience: (exp: Experience) => void;
+  publicPage: PublicPage;
+  setPublicPage: (page: PublicPage) => void;
   adminTab: AdminTab;
   setAdminTab: (tab: AdminTab) => void;
   clientTab: ClientTab;
@@ -124,6 +128,7 @@ interface AppContextType {
   deleteCustomer: (id: string) => void;
   updateCustomerStatus: (id: string, status: CustomerStatus) => void;
   updateWebsiteStatus: (id: string, status: WebsiteStatus) => void;
+  toggleWebsiteStatus: (id: string, customNotice?: string) => void;
   updatePaymentStatus: (id: string, status: PaymentStatus) => void;
   updateClientContent: (customerId: string, content: Partial<ClientWebsiteContent>) => void;
   toggleCustomerTier: (customerId: string) => void;
@@ -184,6 +189,11 @@ interface AppContextType {
   openEnquiryModal: (templateId?: string, planId?: string) => void;
   closeEnquiryModal: () => void;
 
+  isConciergeOpen: boolean;
+  setIsConciergeOpen: (open: boolean) => void;
+  openConciergeModal: () => void;
+  closeConciergeModal: () => void;
+
   toasts: Toast[];
   addToast: (type: Toast['type'], title: string, message: string) => void;
   removeToast: (id: string) => void;
@@ -209,6 +219,91 @@ const STORAGE_KEYS = {
   SESSION: 'webrunzo_demo_session_v3',
   BACKUPS: 'webrunzo_demo_backups_v3',
 };
+
+// Helper to compute URL from state
+function getUrlForState(exp: Experience, pubPage: PublicPage, cTab: ClientTab, aTab: AdminTab): string {
+  if (exp === 'public') {
+    if (pubPage === 'privacy') return '#/privacy-policy';
+    if (pubPage === 'terms') return '#/terms';
+    if (pubPage === 'sla') return '#/sla';
+    return '#/';
+  }
+  if (exp === 'client') {
+    if (cTab === 'dashboard') return '#/client';
+    return `#/client/${cTab}`;
+  }
+  if (exp === 'admin') {
+    if (aTab === 'dashboard') return '#/admin';
+    return `#/admin/${aTab}`;
+  }
+  return '#/';
+}
+
+// Helper to parse URL to state
+function parseUrlToState(): {
+  experience: Experience;
+  publicPage: PublicPage;
+  clientTab: ClientTab;
+  adminTab: AdminTab;
+} {
+  const hash = typeof window !== 'undefined' ? window.location.hash || '' : '';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname || '' : '';
+  
+  const fullPath = (hash.startsWith('#') ? hash.slice(1) : pathname).toLowerCase();
+  
+  if (fullPath.includes('privacy-policy') || fullPath.includes('privacy')) {
+    return { experience: 'public', publicPage: 'privacy', clientTab: 'dashboard', adminTab: 'dashboard' };
+  }
+  if (fullPath.includes('terms')) {
+    return { experience: 'public', publicPage: 'terms', clientTab: 'dashboard', adminTab: 'dashboard' };
+  }
+  if (fullPath.includes('sla')) {
+    return { experience: 'public', publicPage: 'sla', clientTab: 'dashboard', adminTab: 'dashboard' };
+  }
+  if (fullPath.startsWith('/premium') || fullPath.startsWith('premium') || fullPath.startsWith('/vip') || fullPath.startsWith('vip')) {
+    let tab: ClientTab = 'dashboard';
+    if (fullPath.includes('health')) tab = 'premium-health';
+    else if (fullPath.includes('seo')) tab = 'premium-seo';
+    else if (fullPath.includes('script')) tab = 'premium-scripts';
+    return {
+      experience: 'client',
+      publicPage: 'home',
+      clientTab: tab,
+      adminTab: 'dashboard',
+    };
+  }
+  if (fullPath.startsWith('/client') || fullPath.startsWith('client')) {
+    const clean = fullPath.replace(/^\/?client\/?/, '');
+    const tabPart = clean.split('/')[0] as ClientTab;
+    const validClientTabs: ClientTab[] = [
+      'dashboard', 'website', 'orders', 'plan', 'payments', 
+      'support', 'profile', 'premium-health', 'premium-seo', 'premium-scripts'
+    ];
+    return {
+      experience: 'client',
+      publicPage: 'home',
+      clientTab: validClientTabs.includes(tabPart) ? tabPart : 'dashboard',
+      adminTab: 'dashboard',
+    };
+  }
+  if (fullPath.startsWith('/admin') || fullPath.startsWith('admin')) {
+    const clean = fullPath.replace(/^\/?admin\/?/, '');
+    const tabPart = clean.split('/')[0] as AdminTab;
+    const validAdminTabs: AdminTab[] = [
+      'dashboard', 'customers', 'customer-profile', 'orders', 'websites',
+      'backups', 'subscriptions', 'payments', 'templates', 'enquiries',
+      'support', 'settings'
+    ];
+    return {
+      experience: 'admin',
+      publicPage: 'home',
+      clientTab: 'dashboard',
+      adminTab: validAdminTabs.includes(tabPart) ? tabPart : 'dashboard',
+    };
+  }
+  
+  return { experience: 'public', publicPage: 'home', clientTab: 'dashboard', adminTab: 'dashboard' };
+}
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [templates, setTemplates] = useState<Template[]>(() => {
@@ -271,11 +366,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : { role: 'guest', email: '', name: 'Visitor' };
   });
 
-  // Current Views
-  const [currentExperience, setCurrentExperience] = useState<Experience>('public');
-  const [adminTab, setAdminTab] = useState<AdminTab>('dashboard');
-  const [clientTab, setClientTab] = useState<ClientTab>('dashboard');
+  // Current Views with URL Sync
+  const initialNav = parseUrlToState();
+  const [currentExperience, setCurrentExperienceState] = useState<Experience>(initialNav.experience);
+  const [publicPage, setPublicPageState] = useState<PublicPage>(initialNav.publicPage);
+  const [adminTab, setAdminTabState] = useState<AdminTab>(initialNav.adminTab);
+  const [clientTab, setClientTabState] = useState<ClientTab>(initialNav.clientTab);
   const [selectedCustomerIdForAdmin, setSelectedCustomerIdForAdmin] = useState<string | null>(null);
+
+  const isPopstateEventRef = useRef(false);
+
+  const updateUrlHistory = (
+    nextExp: Experience, 
+    nextPubPage: PublicPage, 
+    nextClientTab: ClientTab, 
+    nextAdminTab: AdminTab
+  ) => {
+    if (isPopstateEventRef.current) return;
+    const targetUrl = getUrlForState(nextExp, nextPubPage, nextClientTab, nextAdminTab);
+    if (typeof window !== 'undefined') {
+      const currentHash = window.location.hash || '#/';
+      if (currentHash !== targetUrl) {
+        window.history.pushState(
+          { exp: nextExp, pubPage: nextPubPage, clientTab: nextClientTab, adminTab: nextAdminTab },
+          '',
+          targetUrl
+        );
+      }
+    }
+  };
+
+  const setCurrentExperience = (exp: Experience) => {
+    setCurrentExperienceState(exp);
+    updateUrlHistory(exp, publicPage, clientTab, adminTab);
+  };
+
+  const setPublicPage = (page: PublicPage) => {
+    setPublicPageState(page);
+    setCurrentExperienceState('public');
+    updateUrlHistory('public', page, clientTab, adminTab);
+  };
+
+  const setClientTab = (tab: ClientTab) => {
+    setClientTabState(tab);
+    setCurrentExperienceState('client');
+    updateUrlHistory('client', publicPage, tab, adminTab);
+  };
+
+  const setAdminTab = (tab: AdminTab) => {
+    setAdminTabState(tab);
+    setCurrentExperienceState('admin');
+    updateUrlHistory('admin', publicPage, clientTab, tab);
+  };
+
+  // Browser Back / Forward and Hash Navigation Listener
+  useEffect(() => {
+    const handlePopState = () => {
+      isPopstateEventRef.current = true;
+      const parsed = parseUrlToState();
+      setCurrentExperienceState(parsed.experience);
+      setPublicPageState(parsed.publicPage);
+      setClientTabState(parsed.clientTab);
+      setAdminTabState(parsed.adminTab);
+      setTimeout(() => {
+        isPopstateEventRef.current = false;
+      }, 50);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
+  }, []);
 
   // Modals & UI
   const [previewModal, setPreviewModal] = useState<PreviewModalState>({
@@ -288,6 +452,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [enquiryModal, setEnquiryModal] = useState<EnquiryModalState>({
     isOpen: false,
   });
+
+  const [isConciergeOpen, setIsConciergeOpen] = useState(false);
+
+  const openConciergeModal = () => setIsConciergeOpen(true);
+  const closeConciergeModal = () => setIsConciergeOpen(false);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -515,7 +684,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         contactPhone: customerData.phone || '+1 (555) 000-0000',
         address: '100 Business Center Ave, Suite 100',
         aboutText: `${customerData.businessName || 'We'} provide high-quality services dedicated to customer satisfaction.`,
-        servicesList: assignedTemplate.sampleSections.services.map((s) => ({
+        servicesList: (assignedTemplate?.sampleSections?.services || []).map((s) => ({
           title: s,
           desc: 'Professional high-standard service tailored to your exact specifications.',
         })),
@@ -620,6 +789,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateCustomer(id, { websiteStatus: status });
     logActivity('website', 'Website Status Changed', `Customer website status updated to ${status}.`, session.name, id);
     addToast('success', 'Website Status Updated', `Website status is now ${status}.`);
+  };
+
+  const toggleWebsiteStatus = (id: string, customNotice?: string) => {
+    const cust = customers.find((c) => c.id === id);
+    if (!cust) return;
+    const isCurrentlySuspended = cust.websiteStatus === 'Suspended';
+    const newStatus: WebsiteStatus = isCurrentlySuspended ? 'Live' : 'Suspended';
+
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          return {
+            ...c,
+            websiteStatus: newStatus,
+            maintenanceNotice: customNotice !== undefined ? customNotice : c.maintenanceNotice,
+          };
+        }
+        return c;
+      })
+    );
+
+    if (newStatus === 'Suspended') {
+      logActivity(
+        'website',
+        'Website Manually Suspended / Shutdown',
+        `Admin shut down live access for ${cust.businessName}. Maintenance notice is now displayed on the public URL.`,
+        session.name,
+        id
+      );
+      addToast('warning', 'Website Shut Down', `${cust.businessName}'s website was taken offline. Maintenance notice is now active.`);
+    } else {
+      logActivity(
+        'website',
+        'Website Restored & Activated',
+        `Admin restored live public access for ${cust.businessName}.`,
+        session.name,
+        id
+      );
+      addToast('success', 'Website Activated', `${cust.businessName}'s website is now live and fully accessible.`);
+    }
   };
 
   const updatePaymentStatus = (id: string, status: PaymentStatus) => {
@@ -1091,15 +1300,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const currentClientCustomer = session.customerId
     ? customers.find((c) => c.id === session.customerId) || customers[0]
-    : customers[0];
+    : (session.role === 'premium_client' || clientTab.startsWith('premium-')
+        ? (customers.find((c) => c.clientTier === 'premium') || customers[0])
+        : customers[0]);
 
-  const isPremiumClient = session.role === 'premium_client' || (currentClientCustomer?.clientTier === 'premium');
+  const isPremiumClient = session.role === 'premium_client' || (currentClientCustomer?.clientTier === 'premium') || clientTab.startsWith('premium-');
 
   return (
     <AppContext.Provider
       value={{
         currentExperience,
         setCurrentExperience,
+        publicPage,
+        setPublicPage,
         adminTab,
         setAdminTab,
         clientTab,
@@ -1131,6 +1344,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCustomer,
         updateCustomerStatus,
         updateWebsiteStatus,
+        toggleWebsiteStatus,
         updatePaymentStatus,
         updateClientContent,
         triggerInstantBackup,
@@ -1160,6 +1374,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         enquiryModal,
         openEnquiryModal,
         closeEnquiryModal,
+        isConciergeOpen,
+        setIsConciergeOpen,
+        openConciergeModal,
+        closeConciergeModal,
         toasts,
         addToast,
         removeToast,

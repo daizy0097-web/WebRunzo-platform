@@ -285,22 +285,32 @@ export const ClientSupport: React.FC = () => {
                     </div>
 
                     <div className="space-y-2 pt-2 border-t border-slate-800/80">
-                      {t.messages.map((m, idx) => (
+                      {/* Initial Ticket Message */}
+                      <div className="p-2.5 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-slate-300">
+                        <div className="flex items-center justify-between text-[10px] font-semibold mb-1">
+                          <span className="text-indigo-400">You ({t.clientName})</span>
+                          <span className="text-slate-500 font-mono">{t.createdAt}</span>
+                        </div>
+                        <p className="leading-relaxed">{t.message}</p>
+                      </div>
+
+                      {/* Thread Replies */}
+                      {(t.replies || []).map((m, idx) => (
                         <div
-                          key={idx}
+                          key={m.id || idx}
                           className={`p-2.5 rounded-xl ${
-                            m.sender === 'client'
+                            m.sender === 'Client'
                               ? 'bg-indigo-950/30 border border-indigo-500/20 text-slate-300'
                               : 'bg-emerald-950/30 border border-emerald-500/20 text-emerald-200'
                           }`}
                         >
                           <div className="flex items-center justify-between text-[10px] font-semibold mb-1">
-                            <span className={m.sender === 'client' ? 'text-indigo-400' : 'text-emerald-400'}>
-                              {m.sender === 'client' ? 'You' : 'Webrunzo Staff'}
+                            <span className={m.sender === 'Client' ? 'text-indigo-400' : 'text-emerald-400'}>
+                              {m.sender === 'Client' ? 'You' : m.senderName || 'WebRunzo Support'}
                             </span>
                             <span className="text-slate-500 font-mono">{m.timestamp}</span>
                           </div>
-                          <p>{m.text}</p>
+                          <p className="leading-relaxed">{m.message}</p>
                         </div>
                       ))}
                     </div>

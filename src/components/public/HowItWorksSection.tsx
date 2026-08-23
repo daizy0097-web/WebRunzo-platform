@@ -83,7 +83,7 @@ export const HowItWorksSection: React.FC = () => {
                 </div>
 
                 <div className="pt-4 border-t border-slate-800 space-y-2 text-xs text-slate-300">
-                  {s.points.map((pt, pIdx) => (
+                  {(s.points || []).map((pt, pIdx) => (
                     <div key={pIdx} className="flex items-center gap-2">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                       <span>{pt}</span>

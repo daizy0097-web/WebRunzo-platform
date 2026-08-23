@@ -113,7 +113,7 @@ export const ClientPlan: React.FC = () => {
                   </div>
 
                   <div className="space-y-2 mb-6 text-xs text-slate-300">
-                    {p.features.map((feat, fIdx) => (
+                    {(p.features || []).map((feat, fIdx) => (
                       <div key={fIdx} className="flex items-start gap-2">
                         <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
                         <span>{feat}</span>

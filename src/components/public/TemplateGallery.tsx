@@ -205,7 +205,7 @@ export const TemplateGallery: React.FC = () => {
 
                     {/* Features list tags */}
                     <div className="mt-3 flex flex-wrap gap-1">
-                      {template.features.slice(0, 3).map((feat, fIdx) => (
+                      {(template.features || []).slice(0, 3).map((feat, fIdx) => (
                         <span
                           key={fIdx}
                           className="bg-slate-800/80 text-slate-300 border border-slate-700/60 text-[10px] font-medium px-2 py-0.5 rounded"

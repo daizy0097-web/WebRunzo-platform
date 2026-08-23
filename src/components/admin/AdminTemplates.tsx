@@ -207,7 +207,7 @@ export const AdminTemplates: React.FC = () => {
                 </p>
 
                 <div className="flex flex-wrap gap-1 pt-1">
-                  {tpl.features.slice(0, 2).map((f, fIdx) => (
+                  {(tpl.features || []).slice(0, 2).map((f, fIdx) => (
                     <span key={fIdx} className="bg-slate-800 text-slate-400 text-[9px] px-1.5 py-0.5 rounded">
                       {f}
                     </span>

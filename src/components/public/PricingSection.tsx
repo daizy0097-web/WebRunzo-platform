@@ -83,7 +83,7 @@ export const PricingSection: React.FC = () => {
                     <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
                       What's Included:
                     </div>
-                    {plan.features.map((feat, fIdx) => (
+                    {(plan.features || []).map((feat, fIdx) => (
                       <div key={fIdx} className="flex items-start gap-2.5 text-xs sm:text-sm leading-relaxed">
                         <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
                         <span className={`${feat.includes('Unlimited Revisions') ? 'text-indigo-200 font-semibold' : 'text-slate-300'}`}>

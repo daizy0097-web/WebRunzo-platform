@@ -27,7 +27,7 @@ const MainContent: React.FC = () => {
       {/* Global Interactive Overlays */}
       <EnquiryModal />
       <PreviewModal />
-      {currentExperience === 'public' && <FloatingWhatsApp />}
+      <FloatingWhatsApp />
       <ToastContainer />
     </div>
   );

@@ -8,25 +8,36 @@ import {
   ShieldCheck, 
   UserCheck, 
   Layers,
-  ChevronRight
+  ChevronRight,
+  LifeBuoy
 } from 'lucide-react';
 
 export const PublicNavbar: React.FC = () => {
   const { 
     setCurrentExperience, 
-    loginAsAdmin, 
+    setPublicPage,
     loginAsClient, 
     openEnquiryModal,
+    openConciergeModal,
     session 
   } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const scrollToSection = (id: string) => {
+  const navigateToHome = () => {
+    setPublicPage('home');
     setMobileMenuOpen(false);
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const scrollToSection = (id: string) => {
+    setPublicPage('home');
+    setMobileMenuOpen(false);
+    setTimeout(() => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 50);
   };
 
   return (
@@ -35,7 +46,7 @@ export const PublicNavbar: React.FC = () => {
         <div className="flex items-center justify-between h-16 sm:h-20">
           
           {/* Brand Logo - Sleek Minimalist Aesthetic */}
-          <div className="flex items-center gap-2.5 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+          <div className="flex items-center gap-2.5 cursor-pointer group" onClick={navigateToHome}>
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm sm:text-base tracking-tighter transition-transform group-hover:scale-105 shadow-sm">
               W
             </div>
@@ -49,7 +60,7 @@ export const PublicNavbar: React.FC = () => {
 
           {/* Desktop Navigation Links */}
           <div className="hidden lg:flex items-center gap-8 text-xs font-semibold text-slate-300">
-            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-indigo-400 transition">
+            <button onClick={navigateToHome} className="hover:text-indigo-400 transition cursor-pointer">
               Home
             </button>
             <button onClick={() => scrollToSection('why-webrunzo')} className="hover:text-indigo-400 transition">
@@ -148,6 +159,18 @@ export const PublicNavbar: React.FC = () => {
 
           <div className="pt-4 border-t border-slate-800 space-y-2">
             <button
+              id="btn-nav-mobile-support-concierge"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                openConciergeModal();
+              }}
+              className="w-full text-center py-2.5 rounded-xl border border-emerald-500/40 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <LifeBuoy className="w-4 h-4 text-emerald-400" />
+              <span>Support & Concierge</span>
+            </button>
+
+            <button
               onClick={() => {
                 setMobileMenuOpen(false);
                 loginAsClient();
@@ -155,15 +178,6 @@ export const PublicNavbar: React.FC = () => {
               className="w-full text-center py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 font-bold text-xs"
             >
               Client Portal Login
-            </button>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                loginAsAdmin();
-              }}
-              className="w-full text-center py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs"
-            >
-              Admin Dashboard Login
             </button>
           </div>
         </div>

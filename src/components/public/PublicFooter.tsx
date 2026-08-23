@@ -3,11 +3,14 @@ import { useApp } from '../../context/AppContext';
 import { Sparkles, ShieldCheck, Mail, Phone, MapPin, Globe } from 'lucide-react';
 
 export const PublicFooter: React.FC = () => {
-  const { settings, loginAsAdmin, loginAsClient, openEnquiryModal } = useApp();
+  const { settings, loginAsClient, openConciergeModal, setPublicPage } = useApp();
 
   const scrollTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
+    setPublicPage('home');
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
   };
 
   return (
@@ -77,27 +80,61 @@ export const PublicFooter: React.FC = () => {
 
           {/* Col 4: Portals & Legal */}
           <div className="space-y-3">
-            <div className="font-bold text-white uppercase text-[11px] tracking-wider">Portals & Demo Access</div>
+            <div className="font-bold text-white uppercase text-[11px] tracking-wider">Client Portal & Legal</div>
             <ul className="space-y-2">
               <li>
                 <button 
                   onClick={() => loginAsClient()} 
-                  className="text-amber-400 hover:text-amber-300 font-semibold transition flex items-center gap-1"
+                  className="text-amber-400 hover:text-amber-300 font-semibold transition flex items-center gap-1 cursor-pointer"
                 >
                   <span>Client Dashboard Login →</span>
                 </button>
               </li>
               <li>
                 <button 
-                  onClick={() => loginAsAdmin()} 
-                  className="text-emerald-400 hover:text-emerald-300 font-semibold transition flex items-center gap-1"
+                  id="btn-footer-support-concierge"
+                  onClick={() => openConciergeModal()} 
+                  className="text-emerald-400 hover:text-emerald-300 font-semibold transition flex items-center gap-1 cursor-pointer"
                 >
-                  <span>Admin Panel Login →</span>
+                  <span>Support & Concierge Desk</span>
                 </button>
               </li>
-              <li className="pt-2 text-slate-500 text-[11px]">Privacy Policy</li>
-              <li className="text-slate-500 text-[11px]">Terms of Service</li>
-              <li className="text-slate-500 text-[11px]">Service Level Agreement (SLA)</li>
+              <li className="pt-2">
+                <button
+                  id="btn-footer-privacy-policy"
+                  onClick={() => {
+                    setPublicPage('privacy');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="text-slate-400 hover:text-white transition text-[11px] cursor-pointer text-left"
+                >
+                  Privacy Policy
+                </button>
+              </li>
+              <li>
+                <button
+                  id="btn-footer-terms-of-service"
+                  onClick={() => {
+                    setPublicPage('terms');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="text-slate-400 hover:text-white transition text-[11px] cursor-pointer text-left"
+                >
+                  Terms of Service
+                </button>
+              </li>
+              <li>
+                <button
+                  id="btn-footer-sla"
+                  onClick={() => {
+                    setPublicPage('sla');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="text-slate-400 hover:text-white transition text-[11px] cursor-pointer text-left"
+                >
+                  Service Level Agreement (SLA)
+                </button>
+              </li>
             </ul>
           </div>
 

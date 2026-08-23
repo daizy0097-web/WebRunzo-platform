@@ -26,7 +26,12 @@ import {
   Layers,
   Crown,
   ShoppingBag,
-  LifeBuoy
+  LifeBuoy,
+  Power,
+  ShieldAlert,
+  Wrench,
+  Lock,
+  RefreshCw
 } from 'lucide-react';
 
 export const AdminCustomerProfile: React.FC = () => {
@@ -39,6 +44,7 @@ export const AdminCustomerProfile: React.FC = () => {
     tickets,
     settings,
     updateCustomer, 
+    toggleWebsiteStatus,
     setAdminTab, 
     openPreviewModal,
     loginAsClient,
@@ -83,6 +89,12 @@ export const AdminCustomerProfile: React.FC = () => {
   const [planExpiryDate, setPlanExpiryDate] = useState(customer.planExpiryDate);
   const [websiteUrl, setWebsiteUrl] = useState(customer.websiteUrl);
   const [customDomain, setCustomDomain] = useState(customer.customDomain || '');
+  const [dnsStatus, setDnsStatus] = useState<'Active' | 'Pending DNS Setup' | 'Failed'>((customer.dnsStatus as any) || 'Active');
+  const [sslStatus, setSslStatus] = useState<'Active' | 'Generating' | 'Pending Verification'>((customer.sslStatus as any) || 'Active');
+  const [maintenanceNotice, setMaintenanceNotice] = useState(
+    customer.maintenanceNotice ||
+    `${customer.businessName} is temporarily undergoing scheduled maintenance and system optimization. Normal live service will resume shortly.`
+  );
   const [speedScore, setSpeedScore] = useState(customer.speedScore || 98);
   const [notes, setNotes] = useState(customer.notes || '');
 
@@ -92,6 +104,14 @@ export const AdminCustomerProfile: React.FC = () => {
   const [siteContactEmail, setSiteContactEmail] = useState(customer.customContent?.contactEmail || '');
   const [siteContactPhone, setSiteContactPhone] = useState(customer.customContent?.contactPhone || '');
   const [siteAddress, setSiteAddress] = useState(customer.customContent?.address || '');
+
+  const handleToggleWebsiteControl = () => {
+    toggleWebsiteStatus(
+      customer.id,
+      customer.websiteStatus === 'Suspended' ? undefined : maintenanceNotice.trim()
+    );
+    setWebsiteStatus(customer.websiteStatus === 'Suspended' ? 'Live' : 'Suspended');
+  };
 
   const handleSaveAll = () => {
     updateCustomer(customer.id, {
@@ -108,7 +128,10 @@ export const AdminCustomerProfile: React.FC = () => {
       planStartDate,
       planExpiryDate,
       websiteUrl,
-      customDomain,
+      customDomain: customDomain.trim() || undefined,
+      dnsStatus: customDomain.trim() ? dnsStatus : undefined,
+      sslStatus: customDomain.trim() ? sslStatus : undefined,
+      maintenanceNotice: maintenanceNotice.trim() || undefined,
       speedScore: Number(speedScore),
       notes,
       customContent: {
@@ -119,7 +142,7 @@ export const AdminCustomerProfile: React.FC = () => {
         address: siteAddress,
       },
     });
-    addToast('success', 'Profile Updated', `Changes for ${businessName} saved successfully.`);
+    addToast('success', 'Profile & Website Settings Saved', `Changes for ${businessName} saved successfully.`);
   };
 
   const handleLoginAsThisClient = () => {
@@ -375,38 +398,145 @@ export const AdminCustomerProfile: React.FC = () => {
         {/* Right Column: Website Management & Live Preview */}
         <div className="lg:col-span-5 space-y-6">
           
-          {/* Website Management Panel */}
+          {/* Website Management & Infrastructure Panel */}
           <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
                 <Globe className="w-4 h-4 text-sky-400" />
-                <span>Website & DNS Management</span>
+                <span>Website & Infrastructure Control</span>
               </h3>
-              <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                websiteStatus === 'Live' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+              <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${
+                websiteStatus === 'Live' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                websiteStatus === 'Suspended' ? 'bg-rose-500/20 text-rose-400 border-rose-500/30 font-bold' :
+                'bg-amber-500/20 text-amber-400 border-amber-500/30'
               }`}>
-                {websiteStatus}
+                {websiteStatus === 'Suspended' ? 'Shut Down (Offline)' : websiteStatus}
               </span>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1">Staging / Preview URL</label>
-                <input
-                  type="text"
-                  value={websiteUrl}
-                  onChange={(e) => setWebsiteUrl(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-800 bg-slate-950 font-mono text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
+            {/* Manual Website Status Toggle Box */}
+            <div className={`p-4 rounded-2xl border space-y-3 transition ${
+              websiteStatus === 'Suspended'
+                ? 'bg-rose-950/30 border-rose-500/30 text-rose-200'
+                : 'bg-slate-950 border-slate-800 text-slate-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Live Status Control
+                  </div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5 mt-0.5">
+                    <span className={`w-2 h-2 rounded-full ${websiteStatus === 'Suspended' ? 'bg-rose-500' : 'bg-emerald-400'}`}></span>
+                    <span>{websiteStatus === 'Suspended' ? 'Site is Shut Down (503 Offline)' : 'Site is Live Online'}</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleToggleWebsiteControl}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                    websiteStatus === 'Suspended'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                      : 'bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40'
+                  }`}
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>{websiteStatus === 'Suspended' ? 'Activate (Go Live)' : 'Shut Down Site'}</span>
+                </button>
+              </div>
+
+              {websiteStatus === 'Suspended' && (
+                <div className="pt-2 border-t border-rose-500/20 text-[11px] text-rose-300 space-y-1">
+                  <div className="font-semibold flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Public access suspended: Visitors see maintenance screen.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Customizable Maintenance Notice */}
+            <div>
+              <label className="block text-slate-400 font-semibold mb-1 text-xs">
+                Offline Maintenance Notice (Visible when site is shut down)
+              </label>
+              <textarea
+                rows={2}
+                value={maintenanceNotice}
+                onChange={(e) => setMaintenanceNotice(e.target.value)}
+                placeholder="Message displayed to visitors when the site is suspended..."
+                className="w-full p-2.5 rounded-xl border border-slate-800 bg-slate-950 font-mono text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
+              />
+            </div>
+
+            {/* Custom Domain Management */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Custom Domain & CNAME Binding</span>
+                </span>
+                {customDomain && (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
+                    {dnsStatus}
+                  </span>
+                )}
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Custom Apex Domain</label>
+                <label className="block text-slate-400 font-semibold mb-1">
+                  Custom Domain / CNAME (e.g. clientdomain.com)
+                </label>
                 <input
                   type="text"
                   value={customDomain}
                   onChange={(e) => setCustomDomain(e.target.value)}
-                  placeholder="e.g. www.clientdomain.com"
+                  placeholder="e.g. zenithdental.com or www.zenithdental.com"
+                  className="w-full p-2.5 rounded-xl border border-slate-800 bg-slate-900 font-mono text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1 text-[11px]">DNS Resolution Status</label>
+                  <select
+                    value={dnsStatus}
+                    onChange={(e: any) => setDnsStatus(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-800 bg-slate-900 text-white focus:outline-none"
+                  >
+                    <option value="Active">Active (Propagated)</option>
+                    <option value="Pending DNS Setup">Pending DNS Setup</option>
+                    <option value="Failed">Failed / Incorrect CNAME</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1 text-[11px]">SSL Certificate</label>
+                  <select
+                    value={sslStatus}
+                    onChange={(e: any) => setSslStatus(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-800 bg-slate-900 text-white focus:outline-none"
+                  >
+                    <option value="Active">Active (Auto-Renew)</option>
+                    <option value="Generating">Generating Certificate</option>
+                    <option value="Pending Verification">Pending Verification</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-[10px] text-slate-400 space-y-1 font-mono">
+                <div className="text-slate-300 font-sans font-semibold">DNS CNAME Record:</div>
+                <div className="text-emerald-400">CNAME @ → webrunzo.app-routing.com</div>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">Platform Subdomain / Staging URL</label>
+                <input
+                  type="text"
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-slate-800 bg-slate-950 font-mono text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>

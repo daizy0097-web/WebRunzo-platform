@@ -1,13 +1,42 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAgentAvailability } from '../../utils/agentAvailability';
-import { MessageCircle, X, Send, Sparkles, Clock, ShieldCheck } from 'lucide-react';
+import { 
+  MessageCircle, 
+  X, 
+  Send, 
+  Sparkles, 
+  Clock, 
+  ShieldCheck, 
+  PhoneCall, 
+  Mail, 
+  LifeBuoy,
+  CheckCircle2
+} from 'lucide-react';
 
 export const FloatingWhatsApp: React.FC = () => {
-  const { settings, addToast } = useApp();
-  const [isOpen, setIsOpen] = useState(false);
+  const { settings, addToast, isConciergeOpen, setIsConciergeOpen } = useApp();
+  const [localIsOpen, setLocalIsOpen] = useState(false);
   const [message, setMessage] = useState(settings.whatsAppDefaultMessage);
   const availability = useAgentAvailability(settings);
+
+  // Sync with global isConciergeOpen if triggered from elsewhere
+  const isOpen = isConciergeOpen || localIsOpen;
+  const toggleOpen = () => {
+    if (isConciergeOpen) {
+      setIsConciergeOpen(false);
+      setLocalIsOpen(false);
+    } else {
+      const nextState = !localIsOpen;
+      setLocalIsOpen(nextState);
+      setIsConciergeOpen(nextState);
+    }
+  };
+
+  const closeDialog = () => {
+    setIsConciergeOpen(false);
+    setLocalIsOpen(false);
+  };
 
   const cleanNumber = settings.whatsAppNumber.replace(/[^0-9]/g, '');
 
@@ -15,9 +44,9 @@ export const FloatingWhatsApp: React.FC = () => {
     e.preventDefault();
     const encoded = encodeURIComponent(message || settings.whatsAppDefaultMessage);
     const url = `https://wa.me/${cleanNumber}?text=${encoded}`;
-    addToast('info', 'Connecting to WhatsApp', `Opening direct chat with WebRunzo (${settings.whatsAppNumber})...`);
+    addToast('info', 'Connecting to WhatsApp', `Opening direct concierge chat with WebRunzo (${settings.whatsAppNumber})...`);
     window.open(url, '_blank', 'noopener,noreferrer');
-    setIsOpen(false);
+    closeDialog();
   };
 
   // Status visual themes
@@ -43,34 +72,43 @@ export const FloatingWhatsApp: React.FC = () => {
       : 'bg-slate-700 text-slate-200 border border-slate-600';
 
   return (
-    <aside aria-label="WhatsApp quick chat" className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 [bottom:calc(1rem+env(safe-area-inset-bottom,0px))] [right:calc(1rem+env(safe-area-inset-right,0px))]">
+    <aside 
+      id="support-concierge-widget"
+      aria-label="Support & Concierge Quick Access" 
+      className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 [bottom:calc(1rem+env(safe-area-inset-bottom,0px))] [right:calc(1rem+env(safe-area-inset-right,0px))]"
+    >
+      {/* Support & Concierge Floating Interactive Panel */}
       {isOpen && (
-        <div className="mb-3 w-[calc(100vw-2rem)] max-w-sm sm:w-96 bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-150 right-0">
+        <div 
+          id="support-concierge-panel"
+          className="mb-3 w-[calc(100vw-2rem)] max-w-sm sm:w-96 bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-150 right-0"
+        >
           {/* Header */}
           <div className={`${headerBgClass} p-4 text-white transition-colors duration-200`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-bold text-lg backdrop-blur shadow-sm">
-                  W
+                  <LifeBuoy className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <div className="font-extrabold text-sm flex items-center gap-2">
-                    <span>WebRunzo WhatsApp</span>
+                    <span>Support & Concierge</span>
                     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBadgeBg}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${availability.dotColor} ${availability.dotPulse ? 'animate-pulse' : ''}`}></span>
                       {availability.status}
                     </span>
                   </div>
                   <div className="text-[11px] text-white/90 font-medium">
-                    {availability.statusMessage}
+                    WebRunzo Dedicated Assistance Desk
                   </div>
                 </div>
               </div>
               <button
+                id="btn-close-concierge-modal"
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={closeDialog}
                 className="text-white/80 hover:text-white p-2.5 -mr-1.5 rounded-full hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation cursor-pointer"
-                aria-label="Close WhatsApp chat popup"
+                aria-label="Close Support & Concierge modal"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -87,39 +125,58 @@ export const FloatingWhatsApp: React.FC = () => {
           </div>
 
           {/* Body */}
-          <div className="p-4 bg-slate-50 space-y-3">
+          <div className="p-4 bg-slate-50 space-y-3 max-h-[75vh] overflow-y-auto">
             <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-xs text-slate-700 shadow-sm leading-relaxed">
               {availability.status === 'Online' && (
-                <>👋 <strong>Hi there!</strong> An agent is currently <strong>Online</strong>. Ready to build your dream website or have a question about our templates? Send us a quick WhatsApp message below for an instant reply.</>
+                <>👋 <strong>Welcome to WebRunzo Concierge!</strong> Our engineers and support webmasters are currently <strong>Online</strong>. Need a custom template consultation, turnaround estimate, or site maintenance? Connect instantly below.</>
               )}
               {availability.status === 'Away' && (
-                <>👋 <strong>Hi there!</strong> Our concierge team is currently <strong>Away</strong> on a brief break or shift transition. Leave your message below and we will reply within ~15 minutes.</>
+                <>👋 <strong>Welcome to WebRunzo Concierge!</strong> Our team is currently <strong>Away</strong> on a brief shift transition. Leave your message below and we will reply within ~15 minutes.</>
               )}
               {availability.status === 'Offline' && (
-                <>👋 <strong>Hi there!</strong> We are currently <strong>Offline</strong> outside scheduled business hours ({availability.hoursSummary}). Send your request below and we will reply first thing on the next business day.</>
+                <>👋 <strong>Welcome to WebRunzo Concierge!</strong> We are currently <strong>Offline</strong> outside regular scheduled hours ({availability.hoursSummary}). Send your request below and we will reply first thing on the next business day.</>
               )}
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium px-1">
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Hotline: {settings.whatsAppNumber}</span>
+            {/* Quick Contact Info Cards */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between shadow-2xs">
+                <div className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
+                  <PhoneCall className="w-3 h-3 text-emerald-600" />
+                  <span>WhatsApp Hotline</span>
+                </div>
+                <div className="font-bold text-slate-800 text-[11px] mt-1 font-mono truncate">
+                  {settings.whatsAppNumber}
+                </div>
               </div>
-              <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                <span>Verified Direct Line</span>
+
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between shadow-2xs">
+                <div className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
+                  <Mail className="w-3 h-3 text-indigo-600" />
+                  <span>Support Email</span>
+                </div>
+                <div className="font-bold text-slate-800 text-[11px] mt-1 truncate">
+                  {settings.supportEmail}
+                </div>
               </div>
             </div>
 
-            <form onSubmit={handleSendMessage} className="space-y-2.5">
+            {/* Concierge Message Form */}
+            <form onSubmit={handleSendMessage} className="space-y-2.5 pt-1">
+              <label htmlFor="concierge-input-message" className="block text-[11px] font-bold text-slate-700">
+                Direct Message to Concierge Desk:
+              </label>
               <textarea
+                id="concierge-input-message"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Type your message or project question..."
+                placeholder="How can our concierge team assist you today?"
                 rows={3}
-                className="w-full text-xs p-3 rounded-2xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white resize-none text-slate-800 placeholder-slate-400"
+                className="w-full text-xs p-3 rounded-2xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white resize-none text-slate-800 placeholder-slate-400 shadow-inner"
               />
+              
               <button
+                id="btn-submit-concierge-chat"
                 type="submit"
                 className={`w-full text-white text-xs font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all touch-manipulation active:scale-[0.98] cursor-pointer ${
                   availability.status === 'Online'
@@ -130,34 +187,56 @@ export const FloatingWhatsApp: React.FC = () => {
                 }`}
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>Start WhatsApp Chat ({availability.status})</span>
+                <span>Open Instant WhatsApp Chat ({availability.status})</span>
               </button>
             </form>
+
+            <div className="flex items-center justify-center gap-4 text-[10px] text-slate-500 pt-1">
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                Verified Concierge
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-indigo-600" />
+                24/7 Queue Monitoring
+              </span>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Floating Trigger Button with Expanded Hit Area & Zero-Lag Touch */}
+      {/* Floating "Support & Concierge" Button - Crisp, high-contrast, visible text on desktop & mobile */}
       <button
-        id="btn-floating-whatsapp"
+        id="btn-support-concierge"
+        data-testid="btn-support-concierge"
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-14 h-14 sm:w-15 sm:h-15 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-xl shadow-emerald-600/35 flex items-center justify-center transition-transform duration-75 active:scale-90 group relative cursor-pointer touch-manipulation select-none before:absolute before:-inset-2 before:content-[''] before:rounded-full before:z-0"
-        aria-label={`Chat on WhatsApp (${availability.status})`}
-        title={`WebRunzo Concierge (${availability.status})`}
+        onClick={toggleOpen}
+        className="group relative inline-flex items-center gap-2.5 px-4 sm:px-5 py-3 sm:py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-2xl shadow-emerald-950/50 hover:shadow-emerald-600/50 transition-all duration-150 active:scale-95 cursor-pointer touch-manipulation select-none border border-emerald-400/30"
+        aria-label="Support & Concierge"
+        title="Support & Concierge Desk"
       >
-        <MessageCircle className="w-7 h-7 sm:w-8 sm:h-8 fill-white/20 relative z-10 transition-transform duration-75 group-active:scale-95" />
-        
-        {/* Dynamic Status Indicator Dot */}
-        <span 
-          className={`absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center z-20 ${triggerDotColor} ${
-            availability.dotPulse ? 'animate-pulse' : ''
-          }`}
-        >
-          <span className="sr-only">Status: {availability.status}</span>
+        {/* Pulsing Status Dot */}
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
+          {availability.dotPulse && (
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+          )}
+          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${triggerDotColor}`}></span>
+        </span>
+
+        {/* Icon */}
+        <LifeBuoy className="w-4 h-4 text-white shrink-0 group-hover:rotate-45 transition-transform duration-300" />
+
+        {/* Clearly Visible Label Text */}
+        <span className="font-extrabold text-white tracking-normal whitespace-nowrap text-xs sm:text-sm">
+          Support & Concierge
+        </span>
+
+        {/* Small Status Tag */}
+        <span className="hidden sm:inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-black/20 text-emerald-100 uppercase tracking-wider">
+          {availability.status}
         </span>
       </button>
     </aside>
   );
 };
-

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export const AdminSupport: React.FC = () => {
-  const { tickets, updateTicketStatus, addTicketMessage, addToast } = useApp();
+  const { tickets, updateTicketStatus, replyToTicket, addToast } = useApp();
   const [selectedTicketId, setSelectedTicketId] = useState<string>(tickets[0]?.id || '');
   const [replyText, setReplyText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,8 +27,7 @@ export const AdminSupport: React.FC = () => {
     const matchesSearch = 
       t.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.email.toLowerCase().includes(searchQuery.toLowerCase());
+      t.businessName.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
@@ -38,11 +37,12 @@ export const AdminSupport: React.FC = () => {
     e.preventDefault();
     if (!replyText.trim() || !activeTicket) return;
 
-    addTicketMessage(activeTicket.id, {
-      sender: 'staff',
-      text: replyText.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    });
+    replyToTicket(
+      activeTicket.id,
+      replyText.trim(),
+      'Admin',
+      'Alex Chen (VIP Lead Webmaster)'
+    );
 
     setReplyText('');
     addToast('success', 'Reply Sent', `Response dispatched to ${activeTicket.clientName}.`);
@@ -152,7 +152,7 @@ export const AdminSupport: React.FC = () => {
 
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span>{t.clientName}</span>
-                    <span className="font-mono">{t.messages[t.messages.length - 1]?.timestamp}</span>
+                    <span className="font-mono">{t.replies && t.replies.length > 0 ? t.replies[t.replies.length - 1]?.timestamp : t.createdAt}</span>
                   </div>
                 </button>
               ))
@@ -177,7 +177,7 @@ export const AdminSupport: React.FC = () => {
                       )}
                     </div>
                     <div className="text-xs text-slate-400 mt-0.5">
-                      Client: <span className="text-white font-semibold">{activeTicket.clientName}</span> ({activeTicket.businessName}) • {activeTicket.email}
+                      Client: <span className="text-white font-semibold">{activeTicket.clientName}</span> ({activeTicket.businessName})
                     </div>
                   </div>
 
@@ -213,22 +213,34 @@ export const AdminSupport: React.FC = () => {
 
               {/* Messages Thread */}
               <div className="flex-1 overflow-y-auto space-y-3 py-2 max-h-[350px]">
-                {activeTicket.messages.map((m, idx) => (
+                {/* Initial Client Message */}
+                <div className="p-3.5 rounded-2xl text-xs space-y-1 bg-slate-950 border border-slate-800 mr-8 text-slate-200">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="font-bold text-indigo-400">
+                      {activeTicket.clientName} (Initial Request)
+                    </span>
+                    <span className="text-slate-500 font-mono">{activeTicket.createdAt}</span>
+                  </div>
+                  <p className="leading-relaxed">{activeTicket.message}</p>
+                </div>
+
+                {/* Thread Replies */}
+                {(activeTicket.replies || []).map((m, idx) => (
                   <div
-                    key={idx}
+                    key={m.id || idx}
                     className={`p-3.5 rounded-2xl text-xs space-y-1 ${
-                      m.sender === 'staff'
+                      m.sender === 'Admin'
                         ? 'bg-emerald-950/40 border border-emerald-500/30 ml-8 text-emerald-100'
                         : 'bg-slate-950 border border-slate-800 mr-8 text-slate-200'
                     }`}
                   >
                     <div className="flex items-center justify-between text-[10px]">
-                      <span className={`font-bold ${m.sender === 'staff' ? 'text-emerald-400' : 'text-indigo-400'}`}>
-                        {m.sender === 'staff' ? 'Webrunzo Webmaster (You)' : `${activeTicket.clientName} (Client)`}
+                      <span className={`font-bold ${m.sender === 'Admin' ? 'text-emerald-400' : 'text-indigo-400'}`}>
+                        {m.sender === 'Admin' ? `${m.senderName || 'Webmaster Staff'} (You)` : `${activeTicket.clientName} (Client)`}
                       </span>
                       <span className="text-slate-500 font-mono">{m.timestamp}</span>
                     </div>
-                    <p className="leading-relaxed">{m.text}</p>
+                    <p className="leading-relaxed">{m.message}</p>
                   </div>
                 ))}
               </div>

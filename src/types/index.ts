@@ -100,6 +100,7 @@ export interface Customer {
   dnsStatus?: 'Active' | 'Pending DNS Setup' | 'Verifying' | 'Error';
   sslStatus?: 'Active' | 'Generating' | 'Expired';
   websiteStatus: WebsiteStatus;
+  maintenanceNotice?: string;
   accountStatus: CustomerStatus;
   notes: string;
   internalNotes?: string;

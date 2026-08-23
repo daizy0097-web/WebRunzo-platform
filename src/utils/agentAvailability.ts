@@ -46,9 +46,10 @@ function formatDaysSummary(days: number[] = [1, 2, 3, 4, 5, 6]): string {
   if (days.length === 5 && [1, 2, 3, 4, 5].every((d) => days.includes(d))) return 'Mon - Fri';
   if (days.length === 6 && [1, 2, 3, 4, 5, 6].every((d) => days.includes(d))) return 'Mon - Sat';
   
-  return days
+  return [...(days || [])]
     .sort((a, b) => a - b)
-    .map((d) => DAY_NAMES[d])
+    .map((d) => DAY_NAMES[d] || '')
+    .filter(Boolean)
     .join(', ');
 }
 
