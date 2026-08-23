@@ -47,7 +47,7 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
 
   const newEnquiriesCount = enquiries.filter((e) => e.status === 'New').length;
   const newOrdersCount = orders.filter((o) => o.status === 'New').length;
-  const openTicketsCount = tickets.filter((t) => t.status === 'Open').length;
+  const openTicketsCount = tickets.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
 
   const navItems: { id: AdminTab; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'dashboard', label: 'Overview Dashboard', icon: LayoutDashboard },
@@ -59,7 +59,7 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
     { id: 'payments', label: 'Billing & Invoices', icon: CreditCard },
     { id: 'templates', label: 'Template Catalog', icon: Layout },
     { id: 'enquiries', label: 'Sales Leads', icon: Inbox, badge: newEnquiriesCount },
-    { id: 'support', label: 'Support & Concierge', icon: LifeBuoy, badge: openTicketsCount },
+    { id: 'support', label: 'Queries & Assistance', icon: LifeBuoy, badge: openTicketsCount },
     { id: 'settings', label: 'Platform Settings', icon: Settings },
   ];
 

@@ -18,6 +18,10 @@ import {
   OrderStatus,
   Order,
   SupportTicket,
+  QueryType,
+  QueryStatus,
+  LeadTrackingStatus,
+  PremiumRequestType,
   ClientNotification,
   WebsiteBackupSnapshot,
   BackupType,
@@ -162,7 +166,8 @@ interface AppContextType {
   // Support Tickets
   addTicket: (ticketData: Omit<SupportTicket, 'id' | 'createdAt'>) => SupportTicket;
   updateTicketStatus: (id: string, status: SupportTicket['status']) => void;
-  replyToTicket: (ticketId: string, message: string, sender: 'Client' | 'Admin', senderName: string) => void;
+  updateTicketLeadTracking: (id: string, leadTrackingStatus: LeadTrackingStatus, adminNotes?: string) => void;
+  replyToTicket: (ticketId: string, message: string, sender: 'Client' | 'Admin', senderName: string, attachmentName?: string) => void;
 
   // Notifications
   markNotificationRead: (id: string) => void;
@@ -210,7 +215,7 @@ const STORAGE_KEYS = {
   PLANS: 'webrunzo_demo_plans_v5',
   CUSTOMERS: 'webrunzo_demo_customers_v3',
   ORDERS: 'webrunzo_demo_orders_v3',
-  TICKETS: 'webrunzo_demo_tickets_v3',
+  TICKETS: 'webrunzo_demo_tickets_v5',
   NOTIFICATIONS: 'webrunzo_demo_notifications_v3',
   PAYMENTS: 'webrunzo_demo_payments_v3',
   ENQUIRIES: 'webrunzo_demo_enquiries_v3',
@@ -1135,19 +1140,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...ticketData,
       id: `tkt-${Date.now()}`,
       createdAt: formatted,
-      status: 'Open',
+      status: ticketData.status || 'New',
+      leadTrackingStatus: ticketData.leadTrackingStatus || 'Assistance Request',
+      replies: ticketData.replies || [],
     };
     setTickets((prev) => [newTkt, ...prev]);
-    addToast('success', 'Support Ticket Submitted', `Ticket #${newTkt.id} created. Our team is on it.`);
+    logActivity('customer', `${newTkt.queryType || 'Support'} Submitted`, `${newTkt.clientName} (${newTkt.businessName}) submitted: "${newTkt.subject}".`, session.name, newTkt.customerId);
+
+    // Create client notification
+    if (newTkt.customerId) {
+      setNotifications((prev) => [
+        {
+          id: `notif-${Date.now()}`,
+          customerId: newTkt.customerId,
+          title: newTkt.queryType === 'Premium Assistance' ? 'Assistance Request Received' : 'Support Query Received',
+          message: newTkt.queryType === 'Premium Assistance'
+            ? 'Your assistance request has been received. Our team will review it and get back to you.'
+            : 'Your query has been received. Our team will review it and get back to you.',
+          date: formatted.split(' ')[0],
+          read: false,
+          type: 'info',
+        },
+        ...prev,
+      ]);
+    }
+
+    addToast(
+      'success',
+      newTkt.queryType === 'Premium Assistance' ? 'Assistance Request Received' : 'Query Received',
+      newTkt.queryType === 'Premium Assistance'
+        ? 'Your assistance request has been received. Our team will review it and get back to you.'
+        : 'Your query has been received. Our team will review it and get back to you.'
+    );
     return newTkt;
   };
 
   const updateTicketStatus = (id: string, status: SupportTicket['status']) => {
-    setTickets((prev) => prev.map((t) => (t.id === id ? { ...t, status } : t)));
-    addToast('info', 'Ticket Status Changed', `Ticket status is now ${status}.`);
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          return { ...t, status, updatedAt: new Date().toISOString() };
+        }
+        return t;
+      })
+    );
+
+    const targetTicket = tickets.find((t) => t.id === id);
+    if (targetTicket && targetTicket.customerId) {
+      setNotifications((prev) => [
+        {
+          id: `notif-${Date.now()}`,
+          customerId: targetTicket.customerId,
+          title: `Status Update: ${targetTicket.subject}`,
+          message: `Your request status has been updated to "${status}".`,
+          date: new Date().toISOString().split('T')[0],
+          read: false,
+          type: status === 'Resolved' || status === 'Closed' ? 'success' : 'info',
+        },
+        ...prev,
+      ]);
+    }
+
+    addToast('info', 'Status Updated', `Request status is now "${status}".`);
   };
 
-  const replyToTicket = (ticketId: string, message: string, sender: 'Client' | 'Admin', senderName: string) => {
+  const updateTicketLeadTracking = (id: string, leadTrackingStatus: LeadTrackingStatus, adminNotes?: string) => {
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          return {
+            ...t,
+            leadTrackingStatus,
+            ...(adminNotes !== undefined ? { adminNotes } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      })
+    );
+    addToast('success', 'Lead Tracking Updated', `Marked as "${leadTrackingStatus}".`);
+  };
+
+  const replyToTicket = (
+    ticketId: string,
+    message: string,
+    sender: 'Client' | 'Admin',
+    senderName: string,
+    attachmentName?: string
+  ) => {
     const now = new Date();
     const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const newReply = {
@@ -1156,18 +1236,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       senderName,
       message,
       timestamp: formatted,
+      attachmentName,
     };
     setTickets((prev) =>
       prev.map((t) => {
         if (t.id === ticketId) {
+          const nextStatus: QueryStatus =
+            sender === 'Admin' && (t.status === 'New' || t.status === 'In Review')
+              ? 'In Progress'
+              : sender === 'Client' && t.status === 'Waiting for Customer'
+              ? 'In Review'
+              : t.status;
           return {
             ...t,
+            status: nextStatus,
             replies: [...(t.replies || []), newReply],
+            updatedAt: formatted,
           };
         }
         return t;
       })
     );
+
+    const targetTicket = tickets.find((t) => t.id === ticketId);
+    if (targetTicket && sender === 'Admin' && targetTicket.customerId) {
+      setNotifications((prev) => [
+        {
+          id: `notif-${Date.now()}`,
+          customerId: targetTicket.customerId,
+          title: `New Reply on: ${targetTicket.subject}`,
+          message: `${senderName}: "${message.length > 70 ? message.slice(0, 70) + '...' : message}"`,
+          date: formatted.split(' ')[0],
+          read: false,
+          type: 'info',
+        },
+        ...prev,
+      ]);
+    }
+
     addToast('success', 'Message Sent', 'Your reply has been posted.');
   };
 
@@ -1358,6 +1464,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteOrder,
         addTicket,
         updateTicketStatus,
+        updateTicketLeadTracking,
         replyToTicket,
         markNotificationRead,
         addPayment,

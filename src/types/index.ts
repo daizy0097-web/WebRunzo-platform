@@ -146,24 +146,62 @@ export interface Order {
   }[];
 }
 
+export type QueryType = 'Free Query' | 'Premium Assistance';
+
+export type QueryStatus =
+  | 'New'
+  | 'In Review'
+  | 'In Progress'
+  | 'Waiting for Customer'
+  | 'Resolved'
+  | 'Closed';
+
+export type LeadTrackingStatus =
+  | 'Assistance Request'
+  | 'Custom Work Required'
+  | 'Additional Payment Required'
+  | 'Converted to Lead'
+  | 'Completed';
+
+export type PremiumRequestType =
+  | 'Setup Help'
+  | 'Customization'
+  | 'Website Issue'
+  | 'Content Change'
+  | 'Technical Help'
+  | 'Other';
+
 export interface SupportTicket {
   id: string;
   customerId: string;
   clientName: string;
+  email?: string;
   businessName: string;
+  websiteUrl?: string;
   clientTier: ClientTier;
+  planId?: string;
+  planName?: string;
+  queryType: QueryType;
+  requestType?: PremiumRequestType | string;
   subject: string;
-  category: 'Content & Text' | 'Design & Styling' | 'Domain & DNS' | 'Billing & Plan' | 'Bug / Technical' | 'VIP Priority Request';
-  priority: 'Normal' | 'High' | 'VIP Urgent (2h SLA)';
-  status: 'Open' | 'In Review' | 'Resolved';
+  category?: 'Content & Text' | 'Design & Styling' | 'Domain & DNS' | 'Billing & Plan' | 'Bug / Technical' | 'VIP Priority Request' | string;
+  priority?: 'Normal' | 'High' | 'VIP Urgent (2h SLA)' | string;
+  status: QueryStatus;
+  leadTrackingStatus?: LeadTrackingStatus;
   message: string;
+  attachmentName?: string;
+  attachmentSize?: string;
+  preferredCompletionDate?: string;
+  adminNotes?: string;
   createdAt: string;
+  updatedAt?: string;
   replies?: {
     id: string;
     sender: 'Client' | 'Admin';
     senderName: string;
     message: string;
     timestamp: string;
+    attachmentName?: string;
   }[];
 }
 

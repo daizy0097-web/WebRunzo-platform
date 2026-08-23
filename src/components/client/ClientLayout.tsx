@@ -57,13 +57,10 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
   const currentTemplate = templates.find((t) => t.id === customer?.templateId);
 
   const myOrdersCount = orders.filter((o) => o.customerId === customer?.id && o.status !== 'Completed').length;
-  const myOpenTickets = tickets.filter((t) => (t.customerId === customer?.id || t.email === customer?.email) && t.status === 'Open').length;
+  const myOpenTickets = tickets.filter((t) => (t.customerId === customer?.id || t.email === customer?.email) && t.status !== 'Resolved' && t.status !== 'Closed').length;
 
   const handleNavClick = (id: ClientTab) => {
     setClientTab(id);
-    if (id === 'support') {
-      openConciergeModal();
-    }
   };
 
   const baseNavItems: { id: ClientTab; label: string; icon: React.ElementType; badge?: number }[] = [
