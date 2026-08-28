@@ -4,7 +4,8 @@ import { useAgentAvailability } from '../../utils/agentAvailability';
 import { 
   LayoutDashboard, 
   Globe, 
-  ShoppingBag,
+  HardDrive,
+  ShoppingBag, 
   CreditCard, 
   Receipt, 
   User, 
@@ -21,7 +22,8 @@ import {
   Code,
   ShieldCheck,
   Zap,
-  Clock
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 
 interface Props {
@@ -59,13 +61,16 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
   const myOrdersCount = orders.filter((o) => o.customerId === customer?.id && o.status !== 'Completed').length;
   const myOpenTickets = tickets.filter((t) => (t.customerId === customer?.id || t.email === customer?.email) && t.status !== 'Resolved' && t.status !== 'Closed').length;
 
+  const storageNearOrFull = customer?.storage?.isLimitReached || customer?.storage?.isNearLimit;
+
   const handleNavClick = (id: ClientTab) => {
     setClientTab(id);
   };
 
-  const baseNavItems: { id: ClientTab; label: string; icon: React.ElementType; badge?: number }[] = [
+  const baseNavItems: { id: ClientTab; label: string; icon: React.ElementType; badge?: number; alert?: boolean }[] = [
     { id: 'dashboard', label: 'My Portal Home', icon: LayoutDashboard },
     { id: 'website', label: 'Website & Content', icon: Globe },
+    { id: 'storage', label: 'Cloud Storage & Files', icon: HardDrive, alert: storageNearOrFull },
     { id: 'orders', label: 'My Orders & Progress', icon: ShoppingBag, badge: myOrdersCount > 0 ? myOrdersCount : undefined },
     { id: 'plan', label: 'Plan & Membership', icon: CreditCard },
     { id: 'payments', label: 'Invoices & Billing', icon: Receipt },
@@ -165,11 +170,16 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
                   <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
                   <span>{item.label}</span>
                 </div>
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="bg-indigo-500 text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
-                    {item.badge}
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5">
+                  {item.alert && (
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Storage alert" />
+                  )}
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="bg-indigo-500 text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
               </button>
             );
           })}
@@ -228,7 +238,7 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
             </div>
             <button
               type="button"
-              onClick={openConciergeModal}
+              onClick={() => openConciergeModal('Client Support Request')}
               className={`w-full block text-center py-2 rounded-xl text-white text-[11px] font-bold transition shadow cursor-pointer ${
                 availability.status === 'Online'
                   ? 'bg-emerald-600 hover:bg-emerald-500'

@@ -11,8 +11,9 @@ import {
   ClientNotification,
   WebsiteBackupSnapshot,
 } from '../types';
+import { createInitialStorageForCustomer } from '../utils/storageUtils';
 
-export const INITIAL_TEMPLATES: Template[] = [
+const RAW_TEMPLATES: Template[] = [
   // 1. Business
   {
     id: 'tpl-biz-1',
@@ -418,6 +419,26 @@ export const INITIAL_TEMPLATES: Template[] = [
   },
 ];
 
+export const INITIAL_TEMPLATES: Template[] = RAW_TEMPLATES.map((tpl, idx) => ({
+  ...tpl,
+  status: 'Published',
+  featured: idx === 0 || idx === 3 || idx === 6 || idx === 12 || idx === 18,
+  isMasterTemplate: true,
+  ownershipStatus: 'WebRunzo',
+  licenseStatus: 'Proprietary',
+  copyrightNotice: '© WebRunzo — All Rights Reserved. Master Template Architecture.',
+  createdBy: 'WebRunzo Studio Team',
+  createdAt: '2026-01-15',
+  updatedAt: '2026-08-20',
+  tags: [
+    tpl.category,
+    'Responsive',
+    'Edge Deployed',
+    tpl.price > 30000 ? 'Enterprise VIP' : 'High Conversion',
+    '3D Minimalist',
+  ],
+}));
+
 export const INITIAL_PLANS: Plan[] = [
   {
     id: 'plan-starter',
@@ -494,7 +515,7 @@ export const INITIAL_PLANS: Plan[] = [
   },
 ];
 
-export const INITIAL_CUSTOMERS: Customer[] = [
+const RAW_CUSTOMERS: Customer[] = [
   // 1. [TEST ACCOUNT] Normal Client
   {
     id: 'cust-test-normal',
@@ -902,6 +923,49 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     },
   },
 ];
+
+export const INITIAL_CUSTOMERS: Customer[] = RAW_CUSTOMERS.map((cust, idx) => {
+  // Preset usage amounts for variety in demo (e.g. 2.1 GB, 4.8 GB [near limit], 8.4 GB, 12.6 GB)
+  let presetGB = 2.4;
+  if (cust.id === 'cust-test-normal') presetGB = 4.75; // 95% of 5 GB (near limit test)
+  else if (cust.id === 'cust-test-premium') presetGB = 7.8; // 52% of 15 GB
+  else if (cust.id === 'cust-1') presetGB = 3.2; // 32% of 10 GB
+  else if (cust.id === 'cust-2') presetGB = 11.4; // 76% of 15 GB
+  else if (cust.id === 'cust-3') presetGB = 1.8;
+  else if (cust.id === 'cust-4') presetGB = 4.2;
+
+  const storage = createInitialStorageForCustomer(cust, presetGB);
+
+  const deployment = {
+    platform: 'Vercel' as const,
+    dnsProvider: 'Cloudflare' as const,
+    dbProvider: 'Supabase' as const,
+    storageProvider: 'Supabase Storage / Cloudflare R2' as const,
+    deploymentId: `dpl_${cust.id}_${Math.random().toString(36).substring(2, 9)}`,
+    deploymentStatus: (cust.websiteStatus === 'Live' ? 'Ready' : cust.websiteStatus === 'In Progress' ? 'Building' : 'Suspended') as any,
+    lastDeployedAt: '2026-08-22 14:30 UTC',
+    edgeLocation: 'iad1 (US-East Edge)',
+    sslAutoRenew: true,
+    cnameTarget: 'cname.webrunzo.app',
+    aRecordTarget: '76.76.21.21',
+    buildLogs: [
+      `[14:28:10] Cloning repository instance: customer-${cust.id}...`,
+      `[14:28:14] Isolated environment created with Supabase DB binding.`,
+      `[14:28:19] Building Next.js / Vite production bundle...`,
+      `[14:28:28] Generated edge routes: / /about /services /contact /privacy`,
+      `[14:28:30] Static files deployed to Cloudflare R2 CDN (100% cache hit rate).`,
+      `[14:28:31] SSL Certificate issued and auto-renew validated.`,
+      `[14:28:32] Production deployment ready at ${cust.websiteUrl}`,
+    ],
+  };
+
+  return {
+    ...cust,
+    storage,
+    deployment,
+    subscriptionState: cust.accountStatus === 'Active' ? 'ACTIVE' : cust.accountStatus === 'Pending' ? 'GRACE_PERIOD' : 'SUSPENDED',
+  };
+});
 
 export const INITIAL_ORDERS: Order[] = [
   {

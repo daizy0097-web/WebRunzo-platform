@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { ClientLayout } from './ClientLayout';
 import { ClientDashboard } from './ClientDashboard';
 import { ClientWebsite } from './ClientWebsite';
+import { ClientStorage } from './ClientStorage';
 import { ClientOrders } from './ClientOrders';
 import { ClientPlan } from './ClientPlan';
 import { ClientPayments } from './ClientPayments';
@@ -25,6 +26,7 @@ export const ClientHome: React.FC = () => {
     <ClientLayout>
       {clientTab === 'dashboard' && <ClientDashboard />}
       {clientTab === 'website' && <ClientWebsite />}
+      {clientTab === 'storage' && <ClientStorage />}
       {clientTab === 'orders' && <ClientOrders />}
       {clientTab === 'plan' && <ClientPlan />}
       {clientTab === 'payments' && <ClientPayments />}

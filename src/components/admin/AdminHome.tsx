@@ -12,6 +12,7 @@ import { AdminPayments } from './AdminPayments';
 import { AdminTemplates } from './AdminTemplates';
 import { AdminEnquiries } from './AdminEnquiries';
 import { AdminSupport } from './AdminSupport';
+import { AdminStorage } from './AdminStorage';
 import { AdminSettings } from './AdminSettings';
 import { AdminLogin } from './AdminLogin';
 
@@ -30,6 +31,7 @@ export const AdminHome: React.FC = () => {
       {adminTab === 'customer-profile' && <AdminCustomerProfile />}
       {adminTab === 'orders' && <AdminOrders />}
       {adminTab === 'websites' && <AdminWebsites />}
+      {adminTab === 'storage' && <AdminStorage />}
       {adminTab === 'backups' && <AdminBackups />}
       {adminTab === 'subscriptions' && <AdminSubscriptions />}
       {adminTab === 'payments' && <AdminPayments />}

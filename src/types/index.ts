@@ -18,6 +18,34 @@ export type TemplateCategory =
   | 'E-commerce'
   | 'Personal Brand';
 
+export type TemplateStatus = 'Published' | 'Draft' | 'Archived';
+export type OwnershipStatus = 'WebRunzo' | 'Licensed' | 'Imported Custom';
+export type LicenseStatus = 'Proprietary' | 'Commercial Use Granted' | 'MIT' | 'Custom Agreement';
+export type ImportSource = 
+  | 'Google AI Studio' 
+  | 'Gemini' 
+  | 'Lovable' 
+  | 'Bolt' 
+  | 'v0' 
+  | 'Cursor' 
+  | 'GitHub' 
+  | 'ZIP' 
+  | 'ZIP Upload' 
+  | 'Native';
+
+export interface TemplateImportMetadata {
+  sourceType: ImportSource;
+  sourceUrl?: string;
+  detectedFramework: string;
+  pageCount: number;
+  componentsCount: number;
+  dependencies: string[];
+  assetsCount: number;
+  securityAuditPassed: boolean;
+  importedAt: string;
+  notes?: string;
+}
+
 export interface Template {
   id: string;
   name: string;
@@ -29,7 +57,19 @@ export interface Template {
   price: number;
   popular?: boolean;
   isNew?: boolean;
+  featured?: boolean;
+  status?: TemplateStatus;
+  tags?: string[];
   demoSlug: string;
+  isMasterTemplate?: boolean;
+  createdBy?: string;
+  ownershipStatus?: OwnershipStatus;
+  licenseStatus?: LicenseStatus;
+  copyrightNotice?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  importedFrom?: ImportSource;
+  importMetadata?: TemplateImportMetadata;
   colorScheme: {
     primary: string;
     secondary: string;
@@ -42,6 +82,81 @@ export interface Template {
     tagline: string;
   };
 }
+
+export type FileCategory = 'image' | 'video' | 'document' | 'code' | 'database';
+
+export interface CustomerFile {
+  id: string;
+  name: string;
+  category: FileCategory;
+  sizeBytes: number;
+  sizeFormatted: string;
+  mimeType: string;
+  uploadedAt: string;
+  url?: string;
+}
+
+export interface StorageHistoryEntry {
+  id: string;
+  date: string;
+  adminName: string;
+  action: 'grant_extra' | 'reduce_extra' | 'remove_extra' | 'plan_upgrade' | 'manual_override';
+  previousLimitGB: number;
+  newLimitGB: number;
+  changeAmountGB: number;
+  reason: string;
+  expiryDate?: string;
+  isPermanent: boolean;
+}
+
+export interface StorageAddon {
+  id: string;
+  name: string;
+  extraGB: number;
+  billingType: 'one-time' | 'recurring';
+  price: number;
+  startDate: string;
+  expiryDate?: string;
+  status: 'active' | 'expired' | 'cancelled';
+}
+
+export interface CustomerStorage {
+  maxPhysicalCapacityGB: number; // 15 GB technical cap
+  basePlanLimitGB: number; // 5 GB (Starter), 10 GB (Pro), 15 GB (Business)
+  extraGrantedGB: number; // Admin added storage
+  totalUsableLimitGB: number; // basePlanLimitGB + extraGrantedGB
+  usedBytes: number;
+  usedGB: number;
+  remainingGB: number;
+  usagePercentage: number;
+  breakdown: {
+    imagesBytes: number;
+    videosBytes: number;
+    documentsBytes: number;
+    websiteFilesBytes: number;
+    databaseBytes: number;
+  };
+  files: CustomerFile[];
+  history: StorageHistoryEntry[];
+  addons: StorageAddon[];
+}
+
+export interface CustomerDeployment {
+  platform: 'Vercel';
+  dnsProvider: 'Cloudflare';
+  dbProvider: 'Supabase';
+  storageProvider: 'Supabase Storage / Cloudflare R2';
+  deploymentId: string;
+  deploymentStatus: 'Ready' | 'Building' | 'Queued' | 'Error' | 'Suspended';
+  lastDeployedAt: string;
+  edgeLocation: string;
+  sslAutoRenew: boolean;
+  cnameTarget: string;
+  aRecordTarget: string;
+  buildLogs?: string[];
+}
+
+export type SubscriptionState = 'ACTIVE' | 'PAYMENT_FAILED' | 'GRACE_PERIOD' | 'SUSPENDED';
 
 export interface Plan {
   id: string;
@@ -111,6 +226,10 @@ export interface Customer {
   slaLevel?: string;
   headerScripts?: string;
   footerScripts?: string;
+  storage?: CustomerStorage;
+  deployment?: CustomerDeployment;
+  subscriptionState?: SubscriptionState;
+  gracePeriodEndDate?: string;
   activityHistory: {
     id: string;
     date: string;
@@ -248,7 +367,7 @@ export interface Enquiry {
 export interface ActivityLog {
   id: string;
   timestamp: string;
-  type: 'customer' | 'payment' | 'enquiry' | 'template' | 'website' | 'order' | 'system' | 'backup';
+  type: 'customer' | 'payment' | 'enquiry' | 'template' | 'website' | 'order' | 'system' | 'backup' | 'storage' | 'deployment';
   title: string;
   description: string;
   user: string;

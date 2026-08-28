@@ -25,6 +25,17 @@ import {
   ClientNotification,
   WebsiteBackupSnapshot,
   BackupType,
+  TemplateStatus,
+  OwnershipStatus,
+  LicenseStatus,
+  ImportSource,
+  TemplateCategory,
+  FileCategory,
+  CustomerFile,
+  StorageHistoryEntry,
+  CustomerStorage,
+  CustomerDeployment,
+  SubscriptionState,
 } from '../types';
 import {
   INITIAL_TEMPLATES,
@@ -39,6 +50,12 @@ import {
   INITIAL_SETTINGS,
   INITIAL_BACKUPS,
 } from '../data/mockData';
+import {
+  createInitialStorageForCustomer,
+  recalculateStorage,
+  canUploadFile,
+  formatBytes,
+} from '../utils/storageUtils';
 
 export type Experience = 'public' | 'admin' | 'client';
 export type PublicPage = 'home' | 'privacy' | 'terms' | 'sla';
@@ -49,6 +66,7 @@ export type AdminTab =
   | 'customer-profile' 
   | 'orders' 
   | 'websites' 
+  | 'storage'
   | 'backups'
   | 'subscriptions' 
   | 'payments' 
@@ -60,6 +78,7 @@ export type AdminTab =
 export type ClientTab = 
   | 'dashboard' 
   | 'website' 
+  | 'storage'
   | 'orders' 
   | 'plan' 
   | 'payments' 
@@ -124,6 +143,51 @@ interface AppContextType {
   addTemplate: (template: Omit<Template, 'id'>) => void;
   updateTemplate: (id: string, updates: Partial<Template>) => void;
   deleteTemplate: (id: string) => void;
+  duplicateTemplate: (id: string) => Template;
+  toggleTemplateStatus: (id: string, status: TemplateStatus) => void;
+  toggleTemplateFeatured: (id: string) => void;
+  importWebsiteTemplate: (importData: {
+    name: string;
+    category: TemplateCategory;
+    description: string;
+    price: number;
+    tags?: string[];
+    thumbnail?: string;
+    source: ImportSource;
+    sourceUrl?: string;
+    detectedFramework?: string;
+    pageCount?: number;
+    componentsCount?: number;
+    dependencies?: string[];
+    assetsCount?: number;
+    ownershipStatus: OwnershipStatus;
+    licenseStatus: LicenseStatus;
+    copyrightNotice: string;
+  }) => Template;
+
+  // Storage Management
+  grantExtraStorage: (
+    customerId: string,
+    extraGB: number,
+    options: { reason: string; isPermanent: boolean; expiryDate?: string }
+  ) => void;
+  reduceExtraStorage: (
+    customerId: string,
+    newExtraGB: number,
+    reason: string
+  ) => { success: boolean; message: string };
+  uploadCustomerFile: (
+    customerId: string,
+    fileData: { name: string; sizeBytes: number; category: FileCategory; mimeType?: string; url?: string }
+  ) => { success: boolean; message: string; file?: CustomerFile };
+  deleteCustomerFile: (customerId: string, fileId: string) => void;
+
+  // Deployment & Subscription
+  redeployCustomerWebsite: (customerId: string) => Promise<{ success: boolean; buildLogs: string[] }>;
+  updateCustomerDeployment: (customerId: string, updates: Partial<CustomerDeployment>) => void;
+  updateSubscriptionState: (customerId: string, state: SubscriptionState, gracePeriodEndDate?: string) => void;
+  switchCustomerTemplate: (customerId: string, newTemplateId: string) => void;
+  verifyCustomerDomain: (customerId: string, customDomain: string) => Promise<{ verified: boolean; message: string }>;
 
   updatePlan: (id: string, updates: Partial<Plan>) => void;
 
@@ -281,7 +345,7 @@ function parseUrlToState(): {
     const clean = fullPath.replace(/^\/?client\/?/, '');
     const tabPart = clean.split('/')[0] as ClientTab;
     const validClientTabs: ClientTab[] = [
-      'dashboard', 'website', 'orders', 'plan', 'payments', 
+      'dashboard', 'website', 'storage', 'orders', 'plan', 'payments', 
       'support', 'profile', 'premium-health', 'premium-seo', 'premium-scripts'
     ];
     return {
@@ -295,7 +359,7 @@ function parseUrlToState(): {
     const clean = fullPath.replace(/^\/?admin\/?/, '');
     const tabPart = clean.split('/')[0] as AdminTab;
     const validAdminTabs: AdminTab[] = [
-      'dashboard', 'customers', 'customer-profile', 'orders', 'websites',
+      'dashboard', 'customers', 'customer-profile', 'orders', 'websites', 'storage',
       'backups', 'subscriptions', 'payments', 'templates', 'enquiries',
       'support', 'settings'
     ];
@@ -615,6 +679,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newTemplate: Template = {
       ...templateData,
       id: `tpl-${Date.now()}`,
+      status: templateData.status || 'Published',
+      isMasterTemplate: true,
+      ownershipStatus: templateData.ownershipStatus || 'WebRunzo',
+      licenseStatus: templateData.licenseStatus || 'Proprietary',
+      copyrightNotice: templateData.copyrightNotice || '© WebRunzo — All Rights Reserved.',
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
     };
     setTemplates((prev) => [newTemplate, ...prev]);
     logActivity('template', 'New Template Added', `Template "${newTemplate.name}" added to marketplace.`, session.name);
@@ -623,7 +694,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateTemplate = (id: string, updates: Partial<Template>) => {
     setTemplates((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
+      prev.map((t) => (t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString().split('T')[0] } : t))
     );
     addToast('success', 'Template Updated', 'Template modifications saved successfully.');
   };
@@ -633,6 +704,353 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTemplates((prev) => prev.filter((t) => t.id !== id));
     logActivity('template', 'Template Removed', `Template "${target?.name}" was deleted.`, session.name);
     addToast('info', 'Template Removed', 'The template was removed from the catalog.');
+  };
+
+  const duplicateTemplate = (id: string): Template => {
+    const source = templates.find((t) => t.id === id);
+    if (!source) throw new Error('Template not found');
+    const newTpl: Template = {
+      ...source,
+      id: `tpl-${Date.now()}`,
+      name: `${source.name} (Copy)`,
+      demoSlug: `${source.demoSlug}-copy-${Math.floor(100 + Math.random() * 900)}`,
+      status: 'Draft',
+      isMasterTemplate: true,
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+    setTemplates((prev) => [newTpl, ...prev]);
+    logActivity('template', 'Template Duplicated', `Duplicated "${source.name}" as "${newTpl.name}" (Draft).`, session.name);
+    addToast('success', 'Template Duplicated', `Created draft copy: "${newTpl.name}"`);
+    return newTpl;
+  };
+
+  const toggleTemplateStatus = (id: string, status: TemplateStatus) => {
+    setTemplates((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, status, updatedAt: new Date().toISOString().split('T')[0] } : t))
+    );
+    const target = templates.find((t) => t.id === id);
+    logActivity('template', `Template Status: ${status}`, `Template "${target?.name}" set to ${status}.`, session.name);
+    addToast('success', 'Status Updated', `Template is now marked as ${status}.`);
+  };
+
+  const toggleTemplateFeatured = (id: string) => {
+    const target = templates.find((t) => t.id === id);
+    if (!target) return;
+    const newFeatured = !target.featured;
+    setTemplates((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, featured: newFeatured, updatedAt: new Date().toISOString().split('T')[0] } : t))
+    );
+    addToast('info', newFeatured ? 'Marked Featured' : 'Removed from Featured', `"${target.name}" featured state updated.`);
+  };
+
+  const importWebsiteTemplate = (importData: {
+    name: string;
+    category: TemplateCategory;
+    description: string;
+    price: number;
+    tags?: string[];
+    thumbnail?: string;
+    source: ImportSource;
+    sourceUrl?: string;
+    detectedFramework?: string;
+    pageCount?: number;
+    componentsCount?: number;
+    dependencies?: string[];
+    assetsCount?: number;
+    ownershipStatus: OwnershipStatus;
+    licenseStatus: LicenseStatus;
+    copyrightNotice: string;
+  }): Template => {
+    const newTpl: Template = {
+      id: `tpl-import-${Date.now()}`,
+      name: importData.name,
+      category: importData.category,
+      previewImage: importData.thumbnail || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80',
+      description: importData.description,
+      longDescription: `Imported website project from ${importData.source}. Validated and structured as a WebRunzo Master Template.`,
+      features: ['Responsive Layout', 'Full Page Structure', 'Tailwind CSS Stylings', 'SEO Ready', 'Optimized Assets'],
+      price: importData.price || 34999,
+      status: 'Published',
+      featured: false,
+      isMasterTemplate: true,
+      demoSlug: importData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+      createdBy: session.name || 'Admin',
+      ownershipStatus: importData.ownershipStatus,
+      licenseStatus: importData.licenseStatus,
+      copyrightNotice: importData.copyrightNotice,
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+      importedFrom: importData.source,
+      importMetadata: {
+        sourceType: importData.source,
+        sourceUrl: importData.sourceUrl,
+        detectedFramework: importData.detectedFramework || 'React 19 + Tailwind CSS',
+        pageCount: importData.pageCount || 5,
+        componentsCount: importData.componentsCount || 18,
+        dependencies: importData.dependencies || ['react', 'tailwindcss', 'lucide-react'],
+        assetsCount: importData.assetsCount || 12,
+        securityAuditPassed: true,
+        importedAt: new Date().toISOString(),
+        notes: 'Clean build structure verified without license violations.',
+      },
+      tags: importData.tags || [importData.category, 'Imported', 'Master Template', 'High Speed'],
+      colorScheme: { primary: '#1e293b', secondary: '#0f172a', accent: '#3b82f6' },
+      sampleSections: {
+        heroHeading: `Welcome to ${importData.name}`,
+        heroSubtitle: importData.description,
+        services: ['Core Offering', 'Bespoke Solutions', 'Consultation', 'Delivery'],
+        tagline: 'Precision digital engineering.',
+      },
+    };
+
+    setTemplates((prev) => [newTpl, ...prev]);
+    logActivity('template', 'Website Project Imported', `Imported "${newTpl.name}" from ${importData.source} as Master Template.`, session.name);
+    addToast('success', 'Website Imported', `"${newTpl.name}" successfully imported and published to Master Templates!`);
+    return newTpl;
+  };
+
+  // Storage Management Actions
+  const grantExtraStorage = (
+    customerId: string,
+    extraGB: number,
+    options: { reason: string; isPermanent: boolean; expiryDate?: string }
+  ) => {
+    const cust = customers.find((c) => c.id === customerId);
+    if (!cust) return;
+    const currentStorage = cust.storage || createInitialStorageForCustomer(cust);
+    const newExtraGB = (currentStorage.extraGrantedGB || 0) + extraGB;
+    const newTotalUsableLimitGB = currentStorage.basePlanLimitGB + newExtraGB;
+    const historyEntry: StorageHistoryEntry = {
+      id: `hist-${Date.now()}`,
+      date: new Date().toISOString().split('T')[0],
+      adminName: session.name || 'Admin',
+      action: 'grant_extra',
+      previousLimitGB: currentStorage.totalUsableLimitGB,
+      newLimitGB: newTotalUsableLimitGB,
+      changeAmountGB: extraGB,
+      reason: options.reason || `Admin granted +${extraGB} GB extra storage capacity.`,
+      isPermanent: options.isPermanent,
+      expiryDate: options.expiryDate,
+    };
+
+    const updatedStorage = recalculateStorage(
+      {
+        ...currentStorage,
+        extraGrantedGB: newExtraGB,
+        history: [historyEntry, ...(currentStorage.history || [])],
+      },
+      currentStorage.files || []
+    );
+
+    updateCustomer(customerId, { storage: updatedStorage });
+    logActivity(
+      'storage',
+      'Extra Storage Granted',
+      `Granted +${extraGB} GB to ${cust.businessName}. New limit: ${newTotalUsableLimitGB} GB. Reason: ${options.reason}`,
+      session.name,
+      customerId
+    );
+    addToast('success', 'Storage Capacity Expanded', `Added +${extraGB} GB to ${cust.businessName}. Total usable: ${newTotalUsableLimitGB} GB.`);
+  };
+
+  const reduceExtraStorage = (
+    customerId: string,
+    newExtraGB: number,
+    reason: string
+  ): { success: boolean; message: string } => {
+    const cust = customers.find((c) => c.id === customerId);
+    if (!cust) return { success: false, message: 'Customer not found' };
+    const currentStorage = cust.storage || createInitialStorageForCustomer(cust);
+    const newTotalUsableLimitGB = currentStorage.basePlanLimitGB + newExtraGB;
+
+    if (currentStorage.usedGB > newTotalUsableLimitGB) {
+      const errorMsg = `Cannot reduce limit to ${newTotalUsableLimitGB} GB. Customer currently uses ${currentStorage.usedGB} GB.`;
+      addToast('error', 'Storage Reduction Blocked', errorMsg);
+      return { success: false, message: errorMsg };
+    }
+
+    const change = newExtraGB - currentStorage.extraGrantedGB;
+    const historyEntry: StorageHistoryEntry = {
+      id: `hist-${Date.now()}`,
+      date: new Date().toISOString().split('T')[0],
+      adminName: session.name || 'Admin',
+      action: 'reduce_extra',
+      previousLimitGB: currentStorage.totalUsableLimitGB,
+      newLimitGB: newTotalUsableLimitGB,
+      changeAmountGB: change,
+      reason: reason || `Storage limit adjusted to +${newExtraGB} GB extra.`,
+      isPermanent: true,
+    };
+
+    const updatedStorage = recalculateStorage(
+      {
+        ...currentStorage,
+        extraGrantedGB: newExtraGB,
+        history: [historyEntry, ...(currentStorage.history || [])],
+      },
+      currentStorage.files || []
+    );
+
+    updateCustomer(customerId, { storage: updatedStorage });
+    logActivity('storage', 'Storage Limit Adjusted', `Adjusted extra storage for ${cust.businessName} to +${newExtraGB} GB.`, session.name, customerId);
+    addToast('info', 'Storage Limit Updated', `New usable limit for ${cust.businessName} is ${newTotalUsableLimitGB} GB.`);
+    return { success: true, message: 'Storage limit updated successfully.' };
+  };
+
+  const uploadCustomerFile = (
+    customerId: string,
+    fileData: { name: string; sizeBytes: number; category: FileCategory; mimeType?: string; url?: string }
+  ): { success: boolean; message: string; file?: CustomerFile } => {
+    const cust = customers.find((c) => c.id === customerId);
+    if (!cust) return { success: false, message: 'Customer not found' };
+    const currentStorage = cust.storage || createInitialStorageForCustomer(cust);
+
+    const check = canUploadFile(currentStorage, fileData.sizeBytes);
+    if (!check.allowed) {
+      addToast('error', 'Upload Blocked', check.message || 'Storage limit reached. Please upgrade your plan.');
+      return { success: false, message: check.message || 'Storage limit reached' };
+    }
+
+    const newFile: CustomerFile = {
+      id: `file-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      name: fileData.name,
+      category: fileData.category,
+      sizeBytes: fileData.sizeBytes,
+      sizeFormatted: formatBytes(fileData.sizeBytes),
+      mimeType: fileData.mimeType || 'application/octet-stream',
+      uploadedAt: new Date().toISOString().split('T')[0],
+      url: fileData.url || (fileData.category === 'image' ? 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80' : undefined),
+    };
+
+    const updatedFiles = [newFile, ...(currentStorage.files || [])];
+    const updatedStorage = recalculateStorage(currentStorage, updatedFiles);
+
+    updateCustomer(customerId, { storage: updatedStorage });
+    logActivity('storage', 'File Uploaded', `Uploaded "${newFile.name}" (${newFile.sizeFormatted}) to ${cust.businessName}.`, session.name, customerId);
+    addToast('success', 'File Uploaded', `"${newFile.name}" stored. Storage: ${updatedStorage.usedGB} / ${updatedStorage.totalUsableLimitGB} GB`);
+    return { success: true, message: 'File uploaded successfully', file: newFile };
+  };
+
+  const deleteCustomerFile = (customerId: string, fileId: string) => {
+    const cust = customers.find((c) => c.id === customerId);
+    if (!cust) return;
+    const currentStorage = cust.storage || createInitialStorageForCustomer(cust);
+    const targetFile = currentStorage.files?.find((f) => f.id === fileId);
+    const updatedFiles = (currentStorage.files || []).filter((f) => f.id !== fileId);
+    const updatedStorage = recalculateStorage(currentStorage, updatedFiles);
+
+    updateCustomer(customerId, { storage: updatedStorage });
+    logActivity('storage', 'File Deleted', `Deleted "${targetFile?.name || fileId}" from ${cust.businessName}. Storage reclaimed.`, session.name, customerId);
+    addToast('info', 'File Deleted', `"${targetFile?.name || 'File'}" deleted. ${formatBytes(targetFile?.sizeBytes || 0)} reclaimed.`);
+  };
+
+  // Deployment & Subscription Actions
+  const redeployCustomerWebsite = async (customerId: string): Promise<{ success: boolean; buildLogs: string[] }> => {
+    const cust = customers.find((c) => c.id === customerId);
+    if (!cust) throw new Error('Customer not found');
+
+    addToast('info', 'Triggering Deployment', `Building & deploying ${cust.businessName} to Vercel Edge CDN...`);
+
+    const buildLogs = [
+      `[${new Date().toISOString().substring(11, 19)}] Initiating production deployment for ${cust.businessName}...`,
+      `[${new Date().toISOString().substring(11, 19)}] Connecting Supabase Database & Auth isolated instance...`,
+      `[${new Date().toISOString().substring(11, 19)}] Running Vite build with production tree-shaking & SSR manifests...`,
+      `[${new Date().toISOString().substring(11, 19)}] Optimizing 24 image assets & generating WebP fallbacks...`,
+      `[${new Date().toISOString().substring(11, 19)}] Syncing Edge routes with Cloudflare R2 CDN cache layer...`,
+      `[${new Date().toISOString().substring(11, 19)}] Validating SSL certificate auto-renew handshake...`,
+      `[${new Date().toISOString().substring(11, 19)}] DEPLOYMENT SUCCESS: Live at ${cust.websiteUrl}`,
+    ];
+
+    const deployment: CustomerDeployment = {
+      platform: 'Vercel',
+      dnsProvider: 'Cloudflare',
+      dbProvider: 'Supabase',
+      storageProvider: 'Supabase Storage / Cloudflare R2',
+      deploymentId: `dpl_${cust.id}_${Math.random().toString(36).substring(2, 9)}`,
+      deploymentStatus: 'Ready',
+      lastDeployedAt: `${new Date().toISOString().substring(0, 10)} ${new Date().toISOString().substring(11, 16)} UTC`,
+      edgeLocation: 'iad1 (US-East Edge)',
+      sslAutoRenew: true,
+      cnameTarget: 'cname.webrunzo.app',
+      aRecordTarget: '76.76.21.21',
+      buildLogs,
+    };
+
+    updateCustomer(customerId, { deployment, websiteStatus: 'Live' });
+    logActivity('website', 'Website Redeployed', `Redeployed ${cust.businessName} to Vercel edge. Status: Ready.`, session.name, customerId);
+    addToast('success', 'Deployment Ready', `${cust.businessName} is deployed and live at ${cust.websiteUrl}!`);
+    return { success: true, buildLogs };
+  };
+
+  const updateCustomerDeployment = (customerId: string, updates: Partial<CustomerDeployment>) => {
+    const cust = customers.find((c) => c.id === customerId);
+    if (!cust) return;
+    const currentDeployment = cust.deployment || {
+      platform: 'Vercel',
+      dnsProvider: 'Cloudflare',
+      dbProvider: 'Supabase',
+      storageProvider: 'Supabase Storage / Cloudflare R2',
+      deploymentId: `dpl_${cust.id}_${Date.now()}`,
+      deploymentStatus: 'Ready',
+      lastDeployedAt: 'Just now',
+      edgeLocation: 'iad1 (US-East Edge)',
+      sslAutoRenew: true,
+      cnameTarget: 'cname.webrunzo.app',
+      aRecordTarget: '76.76.21.21',
+    };
+    updateCustomer(customerId, { deployment: { ...currentDeployment, ...updates } });
+  };
+
+  const updateSubscriptionState = (customerId: string, state: SubscriptionState, gracePeriodEndDate?: string) => {
+    updateCustomer(customerId, {
+      subscriptionState: state,
+      gracePeriodEndDate,
+      accountStatus: state === 'ACTIVE' ? 'Active' : state === 'GRACE_PERIOD' ? 'Pending' : 'Expired',
+      websiteStatus: state === 'SUSPENDED' ? 'Suspended' : 'Live',
+    });
+    addToast('info', 'Subscription Updated', `Customer subscription status changed to ${state}.`);
+  };
+
+  const switchCustomerTemplate = (customerId: string, newTemplateId: string) => {
+    const cust = customers.find((c) => c.id === customerId);
+    const targetTpl = templates.find((t) => t.id === newTemplateId);
+    if (!cust || !targetTpl) return;
+
+    updateCustomer(customerId, {
+      templateId: newTemplateId,
+      customContent: {
+        ...cust.customContent,
+        tagline: targetTpl.sampleSections.tagline,
+        heroHeadline: targetTpl.sampleSections.heroHeading,
+        heroSubhead: targetTpl.sampleSections.heroSubtitle,
+        primaryColor: targetTpl.colorScheme.accent,
+        servicesList: (targetTpl.sampleSections.services || []).map((s) => ({
+          title: s,
+          desc: 'Professional high-standard service tailored to your exact specifications.',
+        })),
+      },
+    });
+    logActivity('website', 'Template Swapped', `Swapped template for ${cust.businessName} to ${targetTpl.name}.`, session.name, customerId);
+    addToast('success', 'Template Swapped', `Applied master template "${targetTpl.name}" to ${cust.businessName}'s isolated website instance.`);
+  };
+
+  const verifyCustomerDomain = async (customerId: string, customDomain: string): Promise<{ verified: boolean; message: string }> => {
+    const cust = customers.find((c) => c.id === customerId);
+    if (!cust) return { verified: false, message: 'Customer not found' };
+
+    addToast('info', 'Checking DNS Propagation', `Querying Cloudflare authoritative nameservers for ${customDomain}...`);
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    updateCustomer(customerId, {
+      customDomain,
+      dnsStatus: 'Active',
+      sslStatus: 'Active',
+    });
+
+    addToast('success', 'Domain Connected', `SSL certificate issued and Cloudflare proxy active for ${customDomain}`);
+    return { verified: true, message: 'Domain successfully pointed and verified with valid SSL certificate.' };
   };
 
   // Plan Actions
@@ -698,6 +1116,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           facebook: 'https://facebook.com',
         },
       },
+      storage: customerData.storage || createInitialStorageForCustomer(customerData as any, 1.2),
+      deployment: customerData.deployment || {
+        platform: 'Vercel',
+        dnsProvider: 'Cloudflare',
+        dbProvider: 'Supabase',
+        storageProvider: 'Supabase Storage / Cloudflare R2',
+        deploymentId: `dpl_cust_${Date.now()}`,
+        deploymentStatus: 'Ready',
+        lastDeployedAt: 'Just now',
+        edgeLocation: 'iad1 (US-East Edge)',
+        sslAutoRenew: true,
+        cnameTarget: 'cname.webrunzo.app',
+        aRecordTarget: '76.76.21.21',
+      },
+      subscriptionState: (customerData.subscriptionState || 'ACTIVE') as SubscriptionState,
     };
 
     setCustomers((prev) => [newCust, ...prev]);
@@ -1443,6 +1876,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addTemplate,
         updateTemplate,
         deleteTemplate,
+        duplicateTemplate,
+        toggleTemplateStatus,
+        toggleTemplateFeatured,
+        importWebsiteTemplate,
+        grantExtraStorage,
+        reduceExtraStorage,
+        uploadCustomerFile,
+        deleteCustomerFile,
+        redeployCustomerWebsite,
+        updateCustomerDeployment,
+        updateSubscriptionState,
+        switchCustomerTemplate,
+        verifyCustomerDomain,
         updatePlan,
         addCustomer,
         updateCustomer,
