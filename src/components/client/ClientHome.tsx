@@ -18,7 +18,7 @@ export const ClientHome: React.FC = () => {
   const { clientTab, session, currentClientCustomer } = useApp();
 
   // If not authenticated as client or no current client customer, show ClientLogin
-  if (session.role !== 'normal_client' && session.role !== 'premium_client' && !currentClientCustomer) {
+  if ((session.role !== 'normal_client' && session.role !== 'premium_client') || !currentClientCustomer) {
     return <ClientLogin />;
   }
 

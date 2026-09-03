@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Sparkles, ShieldCheck, Mail, Phone, MapPin, Globe } from 'lucide-react';
 
 export const PublicFooter: React.FC = () => {
-  const { settings, loginAsClient, openConciergeModal, setPublicPage } = useApp();
+  const { settings, setCurrentExperience, openConciergeModal, setPublicPage } = useApp();
 
   const scrollTo = (id: string) => {
     setPublicPage('home');
@@ -84,7 +84,7 @@ export const PublicFooter: React.FC = () => {
             <ul className="space-y-2">
               <li>
                 <button 
-                  onClick={() => loginAsClient()} 
+                  onClick={() => setCurrentExperience('client')} 
                   className="text-amber-400 hover:text-amber-300 font-semibold transition flex items-center gap-1 cursor-pointer"
                 >
                   <span>Client Dashboard Login →</span>

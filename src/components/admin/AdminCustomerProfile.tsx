@@ -47,7 +47,6 @@ export const AdminCustomerProfile: React.FC = () => {
     toggleWebsiteStatus,
     setAdminTab, 
     openPreviewModal,
-    loginAsClient,
     addToast
   } = useApp();
 
@@ -145,10 +144,6 @@ export const AdminCustomerProfile: React.FC = () => {
     addToast('success', 'Profile & Website Settings Saved', `Changes for ${businessName} saved successfully.`);
   };
 
-  const handleLoginAsThisClient = () => {
-    loginAsClient(customer.id);
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       
@@ -178,16 +173,8 @@ export const AdminCustomerProfile: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={handleLoginAsThisClient}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow transition flex items-center gap-2 cursor-pointer"
-          >
-            <LogIn className="w-4 h-4" />
-            <span>Login As This Client</span>
-          </button>
-
-          <button
             onClick={() => openPreviewModal(assignedTemplate, customer)}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-700 transition flex items-center gap-2 cursor-pointer"
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow transition flex items-center gap-2 cursor-pointer"
           >
             <Eye className="w-4 h-4 text-emerald-400" />
             <span>Interactive Simulator</span>

@@ -56,6 +56,37 @@ import {
   canUploadFile,
   formatBytes,
 } from '../utils/storageUtils';
+import { supabase, isSupabaseConfigured, getProfile } from '../lib/supabase';
+import {
+  fetchApplicationData,
+  dbAddTemplate,
+  dbUpdateTemplate,
+  dbDeleteTemplate,
+  dbUpdatePlan,
+  dbAddCustomer,
+  dbUpdateCustomer,
+  dbDeleteCustomer,
+  dbUpdateCustomerStorage,
+  dbInsertCustomerFile,
+  dbDeleteCustomerFile,
+  dbUpdateClientContent,
+  dbAddBackup,
+  dbDeleteBackup,
+  dbAddOrder,
+  dbUpdateOrder,
+  dbDeleteOrder,
+  dbAddTicket,
+  dbUpdateTicket,
+  dbAddTicketReply,
+  dbMarkNotificationRead,
+  dbMarkAllNotificationsRead,
+  dbAddPayment,
+  dbUpdatePaymentStatus,
+  dbSubmitEnquiry,
+  dbUpdateEnquiryStatus,
+  dbUpdateSettings,
+  dbLogActivity,
+} from '../lib/supabaseDb';
 
 export type Experience = 'public' | 'admin' | 'client';
 export type PublicPage = 'home' | 'privacy' | 'terms' | 'sla';
@@ -122,9 +153,9 @@ interface AppContextType {
   setSelectedCustomerIdForAdmin: (id: string | null) => void;
   
   session: UserSession;
-  loginAsAdmin: (email?: string, password?: string) => boolean;
-  loginAsClient: (customerId?: string, email?: string, password?: string) => boolean;
-  logout: () => void;
+  loginAsAdmin: (email?: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  loginAsClient: (email?: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void> | void;
 
   // Data
   templates: Template[];
@@ -235,6 +266,7 @@ interface AppContextType {
 
   // Notifications
   markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: (customerId?: string) => void;
 
   // Payments
   addPayment: (paymentData: Omit<Payment, 'id' | 'transactionId' | 'invoiceNumber'>) => void;
@@ -270,24 +302,12 @@ interface AppContextType {
   // Getters
   currentClientCustomer: Customer | undefined;
   isPremiumClient: boolean;
+  isSupabaseReady: boolean;
+  refreshData: () => Promise<void>;
+  isLoadingData: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-const STORAGE_KEYS = {
-  TEMPLATES: 'webrunzo_demo_templates_v3',
-  PLANS: 'webrunzo_demo_plans_v5',
-  CUSTOMERS: 'webrunzo_demo_customers_v3',
-  ORDERS: 'webrunzo_demo_orders_v3',
-  TICKETS: 'webrunzo_demo_tickets_v5',
-  NOTIFICATIONS: 'webrunzo_demo_notifications_v3',
-  PAYMENTS: 'webrunzo_demo_payments_v3',
-  ENQUIRIES: 'webrunzo_demo_enquiries_v3',
-  LOGS: 'webrunzo_demo_logs_v3',
-  SETTINGS: 'webrunzo_demo_settings_v5',
-  SESSION: 'webrunzo_demo_session_v3',
-  BACKUPS: 'webrunzo_demo_backups_v3',
-};
 
 // Helper to compute URL from state
 function getUrlForState(exp: Experience, pubPage: PublicPage, cTab: ClientTab, aTab: AdminTab): string {
@@ -375,64 +395,23 @@ function parseUrlToState(): {
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [templates, setTemplates] = useState<Template[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
-    return saved ? JSON.parse(saved) : INITIAL_TEMPLATES;
-  });
+  const [templates, setTemplates] = useState<Template[]>(INITIAL_TEMPLATES);
+  const [plans, setPlans] = useState<Plan[]>(INITIAL_PLANS);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [backups, setBackups] = useState<WebsiteBackupSnapshot[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [notifications, setNotifications] = useState<ClientNotification[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [settings, setSettings] = useState<AdminSettings>(INITIAL_SETTINGS);
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
 
-  const [plans, setPlans] = useState<Plan[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PLANS);
-    return saved ? JSON.parse(saved) : INITIAL_PLANS;
-  });
-
-  const [customers, setCustomers] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
-  });
-
-  const [backups, setBackups] = useState<WebsiteBackupSnapshot[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.BACKUPS);
-    return saved ? JSON.parse(saved) : INITIAL_BACKUPS;
-  });
-
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.ORDERS);
-    return saved ? JSON.parse(saved) : INITIAL_ORDERS;
-  });
-
-  const [tickets, setTickets] = useState<SupportTicket[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.TICKETS);
-    return saved ? JSON.parse(saved) : INITIAL_TICKETS;
-  });
-
-  const [notifications, setNotifications] = useState<ClientNotification[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
-  });
-
-  const [payments, setPayments] = useState<Payment[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-    return saved ? JSON.parse(saved) : INITIAL_PAYMENTS;
-  });
-
-  const [enquiries, setEnquiries] = useState<Enquiry[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.ENQUIRIES);
-    return saved ? JSON.parse(saved) : INITIAL_ENQUIRIES;
-  });
-
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.LOGS);
-    return saved ? JSON.parse(saved) : INITIAL_ACTIVITY_LOGS;
-  });
-
-  const [settings, setSettings] = useState<AdminSettings>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    return saved ? JSON.parse(saved) : INITIAL_SETTINGS;
-  });
-
-  const [session, setSession] = useState<UserSession>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.SESSION);
-    return saved ? JSON.parse(saved) : { role: 'guest', email: '', name: 'Visitor' };
+  const [session, setSession] = useState<UserSession>({
+    role: 'guest',
+    email: '',
+    name: 'Visitor',
   });
 
   // Current Views with URL Sync
@@ -529,54 +508,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Sync to localStorage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(templates));
-  }, [templates]);
+  // Refresh all application data from Supabase
+  const refreshData = async (overrideRole?: Role, overrideCustomerId?: string) => {
+    if (!isSupabaseConfigured) return;
+    setIsLoadingData(true);
+    try {
+      const activeRole = overrideRole || session.role;
+      const activeCustomerId = overrideCustomerId || session.customerId;
+      const data = await fetchApplicationData(activeRole, activeCustomerId);
+      if (data.templates && data.templates.length > 0) setTemplates(data.templates);
+      if (data.plans && data.plans.length > 0) setPlans(data.plans);
+      if (data.customers) setCustomers(data.customers);
+      if (data.orders) setOrders(data.orders);
+      if (data.tickets) setTickets(data.tickets);
+      if (data.notifications) setNotifications(data.notifications);
+      if (data.payments) setPayments(data.payments);
+      if (data.enquiries) setEnquiries(data.enquiries);
+      if (data.backups) setBackups(data.backups);
+      if (data.activityLogs) setActivityLogs(data.activityLogs);
+      if (data.settings) setSettings(data.settings);
+    } catch (err) {
+      console.warn('Error synchronizing database data:', err);
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
 
+  // Supabase Auth Session Synchronization
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PLANS, JSON.stringify(plans));
-  }, [plans]);
+    if (!isSupabaseConfigured) return;
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
-  }, [customers]);
+    let isMounted = true;
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
-  }, [orders]);
+    // Restore active session from Supabase
+    const restoreSession = async () => {
+      try {
+        const { data: { session: sbSession } } = await supabase.auth.getSession();
+        if (!isMounted) return;
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(tickets));
-  }, [tickets]);
+        if (sbSession?.user) {
+          const profile = await getProfile(sbSession.user.id);
+          if (!isMounted) return;
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifications));
-  }, [notifications]);
+          if (profile?.role === 'admin') {
+            const nextSession: UserSession = {
+              role: 'admin',
+              email: sbSession.user.email || profile.email || '',
+              name: profile.full_name || 'WebRunzo Owner',
+            };
+            setSession(nextSession);
+            await refreshData('admin');
+          } else if (profile?.role === 'client') {
+            const tier = profile.client_tier || 'normal';
+            const customerId = profile.customer_id || sbSession.user.id;
+            const nextSession: UserSession = {
+              role: tier === 'premium' ? 'premium_client' : 'normal_client',
+              customerId,
+              clientTier: tier,
+              email: sbSession.user.email || profile.email || '',
+              name: profile.full_name || 'Client',
+            };
+            setSession(nextSession);
+            await refreshData(nextSession.role, customerId);
+          }
+        } else {
+          // Public visitor - fetch marketplace templates, plans, and public settings
+          await refreshData('guest');
+        }
+      } catch (err) {
+        console.warn('Could not restore Supabase session:', err);
+      }
+    };
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
-  }, [payments]);
+    restoreSession();
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.ENQUIRIES, JSON.stringify(enquiries));
-  }, [enquiries]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, sbSession) => {
+      if (!isMounted) return;
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(activityLogs));
-  }, [activityLogs]);
+      if (event === 'SIGNED_OUT' || !sbSession) {
+        setSession({ role: 'guest', email: '', name: 'Visitor' });
+        setCustomers([]);
+        setOrders([]);
+        setTickets([]);
+        setNotifications([]);
+        setPayments([]);
+        setEnquiries([]);
+        setBackups([]);
+        setActivityLogs([]);
+        await refreshData('guest');
+      }
+    });
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.BACKUPS, JSON.stringify(backups));
-  }, [backups]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-  }, [settings]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-  }, [session]);
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const addToast = (type: Toast['type'], title: string, message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -601,76 +628,167 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       customerId,
     };
     setActivityLogs((prev) => [newLog, ...prev]);
+    dbLogActivity(newLog);
   };
 
   // Auth Helpers
-  const loginAsAdmin = (email?: string, password?: string) => {
-    // If credentials passed, verify
-    if (email !== undefined && password !== undefined) {
-      const validEmail = settings.adminEmail || 'hello.webrunzo@gmail.com';
-      const validPass = settings.adminPassword || 'Dev.1303';
-      if (email.trim().toLowerCase() !== validEmail.trim().toLowerCase() || password !== validPass) {
-        addToast('error', 'Authentication Failed', 'Invalid admin email or password.');
-        return false;
+  const loginAsAdmin = async (
+    email?: string, 
+    password?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!isSupabaseConfigured) {
+      const errorMsg = 'Supabase authentication is not configured. Please define VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.';
+      addToast('error', 'Auth Unavailable', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    if (!email || !password) {
+      const errorMsg = 'Please provide both owner email and password.';
+      addToast('error', 'Credentials Required', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        addToast('error', 'Authentication Failed', error.message);
+        return { success: false, error: error.message };
+      }
+
+      if (!data.user) {
+        addToast('error', 'Authentication Failed', 'No user returned from Supabase Auth.');
+        return { success: false, error: 'No user returned from Supabase Auth.' };
+      }
+
+      // Check role in profiles table
+      const profile = await getProfile(data.user.id);
+      if (!profile || profile.role !== 'admin') {
+        await supabase.auth.signOut();
+        setSession({ role: 'guest', email: '', name: 'Visitor' });
+        const errorMsg = 'Access Denied: This account is not authorized as an Administrator.';
+        addToast('error', 'Unauthorized', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      setSession({
+        role: 'admin',
+        email: data.user.email || profile.email || email,
+        name: profile.full_name || 'WebRunzo Owner',
+      });
+      setCurrentExperience('admin');
+      setAdminTab('dashboard');
+      await refreshData('admin');
+      addToast('success', 'Admin Signed In', 'Welcome to WebRunzo Owner Command Center');
+      return { success: true };
+    } catch (err: any) {
+      const errorMsg = err?.message || 'An unexpected error occurred during admin sign-in.';
+      addToast('error', 'Login Error', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const loginAsClient = async (
+    email?: string, 
+    password?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!isSupabaseConfigured) {
+      const errorMsg = 'Supabase authentication is not configured. Please define VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.';
+      addToast('error', 'Auth Unavailable', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    if (!email || !password) {
+      const errorMsg = 'Please provide both client email and password.';
+      addToast('error', 'Credentials Required', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        addToast('error', 'Authentication Failed', error.message);
+        return { success: false, error: error.message };
+      }
+
+      if (!data.user) {
+        addToast('error', 'Authentication Failed', 'No user returned from Supabase Auth.');
+        return { success: false, error: 'No user returned from Supabase Auth.' };
+      }
+
+      // Fetch user profile from Supabase
+      const profile = await getProfile(data.user.id);
+      if (!profile || (profile.role !== 'client' && profile.role !== 'admin')) {
+        await supabase.auth.signOut();
+        setSession({ role: 'guest', email: '', name: 'Visitor' });
+        const errorMsg = 'Access Denied: No client profile found for this account.';
+        addToast('error', 'Unauthorized', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      // Find client record by customer_id or email
+      const matchedCustomer = customers.find(
+        (c) => c.id === profile.customer_id || c.email.toLowerCase() === (data.user?.email || email).toLowerCase()
+      );
+
+      const clientTier = profile.client_tier || matchedCustomer?.clientTier || 'normal';
+      const role: Role = clientTier === 'premium' ? 'premium_client' : 'normal_client';
+      const targetCustomerId = profile.customer_id || matchedCustomer?.id || data.user.id;
+
+      setSession({
+        role,
+        customerId: targetCustomerId,
+        clientTier,
+        email: data.user.email || profile.email || email,
+        name: profile.full_name || matchedCustomer?.name || 'Client',
+        isTestSession: false,
+      });
+      setCurrentExperience('client');
+      setClientTab('dashboard');
+      await refreshData(role, targetCustomerId);
+      addToast(
+        'success',
+        `${clientTier === 'premium' ? 'VIP Premium' : 'Client'} Portal Signed In`,
+        `Welcome back, ${profile.business_name || matchedCustomer?.businessName || profile.full_name || 'Client'}`
+      );
+      return { success: true };
+    } catch (err: any) {
+      const errorMsg = err?.message || 'An unexpected error occurred during client sign-in.';
+      addToast('error', 'Login Error', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const logout = async () => {
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('Sign out warning:', err);
       }
     }
-
-    setSession({
-      role: 'admin',
-      email: settings.adminEmail || 'hello.webrunzo@gmail.com',
-      name: 'Sarah Jenkins (WebRunzo Owner)',
-    });
-    setCurrentExperience('admin');
-    setAdminTab('dashboard');
-    addToast('success', 'Admin Signed In', 'Welcome back to WebRunzo Owner Command Center');
-    return true;
-  };
-
-  const loginAsClient = (customerId?: string, email?: string, password?: string) => {
-    let targetCustomer: Customer | undefined;
-
-    if (customerId) {
-      targetCustomer = customers.find((c) => c.id === customerId);
-    } else if (email) {
-      targetCustomer = customers.find((c) => c.email.toLowerCase() === email.trim().toLowerCase());
-    } else {
-      // Default to first test customer
-      targetCustomer = customers.find((c) => c.isTestAccount && c.clientTier === 'normal') || customers[0];
-    }
-
-    if (!targetCustomer) {
-      addToast('error', 'Login Failed', 'Customer account not found.');
-      return false;
-    }
-
-    // Role differentiation
-    const role: Role = targetCustomer.clientTier === 'premium' ? 'premium_client' : 'normal_client';
-
-    setSession({
-      role,
-      customerId: targetCustomer.id,
-      clientTier: targetCustomer.clientTier,
-      email: targetCustomer.email,
-      name: targetCustomer.name,
-      isTestSession: targetCustomer.isTestAccount,
-    });
-    setCurrentExperience('client');
-    setClientTab('dashboard');
-    addToast(
-      'success',
-      `${targetCustomer.clientTier === 'premium' ? 'VIP Premium' : 'Client'} Portal Signed In`,
-      `Welcome back, ${targetCustomer.businessName}`
-    );
-    return true;
-  };
-
-  const logout = () => {
     setSession({
       role: 'guest',
       email: '',
       name: 'Visitor',
     });
+    setCustomers([]);
+    setOrders([]);
+    setTickets([]);
+    setNotifications([]);
+    setPayments([]);
+    setEnquiries([]);
+    setBackups([]);
+    setActivityLogs([]);
     setCurrentExperience('public');
+    await refreshData('guest');
     addToast('info', 'Logged Out', 'You have been safely signed out.');
   };
 
@@ -688,6 +806,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString().split('T')[0],
     };
     setTemplates((prev) => [newTemplate, ...prev]);
+    dbAddTemplate(newTemplate).catch((err) => {
+      console.warn('Error persisting template to Supabase:', err);
+    });
     logActivity('template', 'New Template Added', `Template "${newTemplate.name}" added to marketplace.`, session.name);
     addToast('success', 'Template Created', `"${newTemplate.name}" has been published to the gallery.`);
   };
@@ -696,12 +817,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTemplates((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString().split('T')[0] } : t))
     );
+    dbUpdateTemplate(id, updates).catch((err) => {
+      console.warn('Error updating template in Supabase:', err);
+    });
     addToast('success', 'Template Updated', 'Template modifications saved successfully.');
   };
 
   const deleteTemplate = (id: string) => {
     const target = templates.find((t) => t.id === id);
     setTemplates((prev) => prev.filter((t) => t.id !== id));
+    dbDeleteTemplate(id).catch((err) => {
+      console.warn('Error deleting template from Supabase:', err);
+    });
     logActivity('template', 'Template Removed', `Template "${target?.name}" was deleted.`, session.name);
     addToast('info', 'Template Removed', 'The template was removed from the catalog.');
   };
@@ -720,6 +847,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString().split('T')[0],
     };
     setTemplates((prev) => [newTpl, ...prev]);
+    dbAddTemplate(newTpl).catch((err) => {
+      console.warn('Error duplicating template in Supabase:', err);
+    });
     logActivity('template', 'Template Duplicated', `Duplicated "${source.name}" as "${newTpl.name}" (Draft).`, session.name);
     addToast('success', 'Template Duplicated', `Created draft copy: "${newTpl.name}"`);
     return newTpl;
@@ -729,6 +859,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTemplates((prev) =>
       prev.map((t) => (t.id === id ? { ...t, status, updatedAt: new Date().toISOString().split('T')[0] } : t))
     );
+    dbUpdateTemplate(id, { status }).catch((err) => {
+      console.warn('Error toggling template status in Supabase:', err);
+    });
     const target = templates.find((t) => t.id === id);
     logActivity('template', `Template Status: ${status}`, `Template "${target?.name}" set to ${status}.`, session.name);
     addToast('success', 'Status Updated', `Template is now marked as ${status}.`);
@@ -741,6 +874,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTemplates((prev) =>
       prev.map((t) => (t.id === id ? { ...t, featured: newFeatured, updatedAt: new Date().toISOString().split('T')[0] } : t))
     );
+    dbUpdateTemplate(id, { featured: newFeatured }).catch((err) => {
+      console.warn('Error updating template featured in Supabase:', err);
+    });
     addToast('info', newFeatured ? 'Marked Featured' : 'Removed from Featured', `"${target.name}" featured state updated.`);
   };
 
@@ -805,6 +941,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setTemplates((prev) => [newTpl, ...prev]);
+    dbAddTemplate(newTpl).catch((err) => {
+      console.warn('Error persisting imported template to Supabase:', err);
+    });
     logActivity('template', 'Website Project Imported', `Imported "${newTpl.name}" from ${importData.source} as Master Template.`, session.name);
     addToast('success', 'Website Imported', `"${newTpl.name}" successfully imported and published to Master Templates!`);
     return newTpl;
@@ -927,6 +1066,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedStorage = recalculateStorage(currentStorage, updatedFiles);
 
     updateCustomer(customerId, { storage: updatedStorage });
+    dbInsertCustomerFile(customerId, newFile, updatedStorage).catch((err) => {
+      console.warn('Error saving customer file record in Supabase:', err);
+    });
     logActivity('storage', 'File Uploaded', `Uploaded "${newFile.name}" (${newFile.sizeFormatted}) to ${cust.businessName}.`, session.name, customerId);
     addToast('success', 'File Uploaded', `"${newFile.name}" stored. Storage: ${updatedStorage.usedGB} / ${updatedStorage.totalUsableLimitGB} GB`);
     return { success: true, message: 'File uploaded successfully', file: newFile };
@@ -941,6 +1083,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedStorage = recalculateStorage(currentStorage, updatedFiles);
 
     updateCustomer(customerId, { storage: updatedStorage });
+    dbDeleteCustomerFile(customerId, fileId, updatedStorage).catch((err) => {
+      console.warn('Error deleting customer file in Supabase:', err);
+    });
     logActivity('storage', 'File Deleted', `Deleted "${targetFile?.name || fileId}" from ${cust.businessName}. Storage reclaimed.`, session.name, customerId);
     addToast('info', 'File Deleted', `"${targetFile?.name || 'File'}" deleted. ${formatBytes(targetFile?.sizeBytes || 0)} reclaimed.`);
   };
@@ -1056,6 +1201,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Plan Actions
   const updatePlan = (id: string, updates: Partial<Plan>) => {
     setPlans((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    dbUpdatePlan(id, updates).catch((err) => {
+      console.warn('Error updating plan in Supabase:', err);
+    });
     addToast('success', 'Pricing Plan Updated', 'Pricing plan configurations saved.');
   };
 
@@ -1134,6 +1282,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setCustomers((prev) => [newCust, ...prev]);
+    dbAddCustomer(newCust).catch((err) => {
+      console.warn('Error adding customer to Supabase:', err);
+    });
 
     // Also add corresponding Order
     const targetPlan = plans.find((p) => p.id === newCust.planId) || plans[1];
@@ -1162,6 +1313,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ],
     };
     setOrders((prev) => [newOrder, ...prev]);
+    dbAddOrder(newOrder).catch((err) => {
+      console.warn('Error adding order to Supabase:', err);
+    });
 
     // Also add initial payment record
     const newPayment: Payment = {
@@ -1178,6 +1332,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       method: 'Credit Card / Electronic Settlement',
     };
     setPayments((prev) => [newPayment, ...prev]);
+    dbAddPayment(newPayment).catch((err) => {
+      console.warn('Error adding payment to Supabase:', err);
+    });
 
     logActivity('customer', 'New Customer Added', `${newCust.name} (${newCust.businessName}) was created.`, session.name, newCust.id);
     addToast('success', 'Customer Added', `${newCust.businessName} has been enrolled.`);
@@ -1194,6 +1351,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return c;
       })
     );
+    dbUpdateCustomer(id, updates).catch((err) => {
+      console.warn('Error updating customer in Supabase:', err);
+    });
     addToast('success', 'Customer Updated', 'Changes have been saved successfully.');
   };
 
@@ -1213,6 +1373,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteCustomer = (id: string) => {
     const cust = customers.find((c) => c.id === id);
     setCustomers((prev) => prev.filter((c) => c.id !== id));
+    dbDeleteCustomer(id).catch((err) => {
+      console.warn('Error deleting customer from Supabase:', err);
+    });
     logActivity('customer', 'Customer Deleted', `Customer account for ${cust?.businessName} was removed.`, session.name);
     addToast('info', 'Customer Deleted', 'Customer account was removed.');
   };
@@ -1247,6 +1410,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return c;
       })
     );
+    dbUpdateCustomer(id, {
+      websiteStatus: newStatus,
+      maintenanceNotice: customNotice !== undefined ? customNotice : cust.maintenanceNotice,
+    }).catch((err) => {
+      console.warn('Error updating website status in Supabase:', err);
+    });
 
     if (newStatus === 'Suspended') {
       logActivity(
@@ -1276,19 +1445,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateClientContent = (customerId: string, contentUpdates: Partial<ClientWebsiteContent>) => {
+    const cust = customers.find((c) => c.id === customerId);
+    const updatedContent = { ...(cust?.customContent || {}), ...contentUpdates };
+    const newHistory = [
+      {
+        id: `act-${Date.now()}`,
+        date: new Date().toISOString().split('T')[0],
+        action: 'Website content updated via Client Portal.',
+        user: session.name || cust?.name || 'Client',
+      },
+      ...(cust?.activityHistory || []),
+    ];
+
     setCustomers((prev) =>
       prev.map((c) => {
         if (c.id === customerId) {
-          const updatedContent = { ...c.customContent, ...contentUpdates };
-          const newHistory = [
-            {
-              id: `act-${Date.now()}`,
-              date: new Date().toISOString().split('T')[0],
-              action: 'Website content updated via Client Portal.',
-              user: session.name || c.name,
-            },
-            ...c.activityHistory,
-          ];
           return {
             ...c,
             businessName: contentUpdates.businessName || c.businessName,
@@ -1299,6 +1470,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return c;
       })
     );
+    dbUpdateCustomer(customerId, {
+      customContent: updatedContent,
+      businessName: contentUpdates.businessName || cust?.businessName,
+      activityHistory: newHistory,
+    }).catch((err) => {
+      console.warn('Error updating client content in Supabase:', err);
+    });
     logActivity('website', 'Client Website Edited', `Content was updated for ${customerId}`, session.name, customerId);
     addToast('success', 'Website Content Saved', 'Your website has been updated and the live preview refreshed!');
   };
@@ -1368,6 +1546,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setBackups((prev) => [newSnapshot, ...prev]);
+    dbAddBackup(newSnapshot).catch((err) => {
+      console.warn('Error saving backup snapshot in Supabase:', err);
+    });
 
     // Add activity to customer
     setCustomers((prev) =>
@@ -1492,6 +1673,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteBackupSnapshot = (backupId: string) => {
     setBackups((prev) => prev.filter((b) => b.id !== backupId));
+    dbDeleteBackup(backupId).catch((err) => {
+      console.warn('Error deleting backup snapshot in Supabase:', err);
+    });
     addToast('info', 'Snapshot Pruned', 'Backup archive metadata removed from cloud ledger.');
   };
 
@@ -1544,6 +1728,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ],
     };
     setOrders((prev) => [newOrd, ...prev]);
+    dbAddOrder(newOrd).catch((err) => {
+      console.warn('Error adding order to Supabase:', err);
+    });
     logActivity('order', 'New Order Created', `Order ${newOrd.orderNumber} placed by ${newOrd.businessName}.`, session.name);
     addToast('success', 'Order Created', `Order ${newOrd.orderNumber} successfully registered.`);
     return newOrd;
@@ -1551,17 +1738,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateOrder = (id: string, updates: Partial<Order>) => {
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...updates } : o)));
+    dbUpdateOrder(id, updates).catch((err) => {
+      console.warn('Error updating order in Supabase:', err);
+    });
     addToast('success', 'Order Updated', 'Order details saved successfully.');
   };
 
   const updateOrderStatus = (id: string, status: OrderStatus) => {
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+    dbUpdateOrder(id, { status }).catch((err) => {
+      console.warn('Error updating order status in Supabase:', err);
+    });
     logActivity('order', 'Order Status Updated', `Order ${id} status set to ${status}.`, session.name);
     addToast('info', 'Order Status Updated', `Order status is now ${status}.`);
   };
 
   const deleteOrder = (id: string) => {
     setOrders((prev) => prev.filter((o) => o.id !== id));
+    dbDeleteOrder(id).catch((err) => {
+      console.warn('Error deleting order in Supabase:', err);
+    });
     addToast('info', 'Order Deleted', 'Order was removed from records.');
   };
 
@@ -1578,6 +1774,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       replies: ticketData.replies || [],
     };
     setTickets((prev) => [newTkt, ...prev]);
+    dbAddTicket(newTkt).catch((err) => {
+      console.warn('Error adding ticket to Supabase:', err);
+    });
     logActivity('customer', `${newTkt.queryType || 'Support'} Submitted`, `${newTkt.clientName} (${newTkt.businessName}) submitted: "${newTkt.subject}".`, session.name, newTkt.customerId);
 
     // Create client notification
@@ -1619,6 +1818,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     const targetTicket = tickets.find((t) => t.id === id);
+    dbUpdateTicket(id, { status }, targetTicket?.customerId).catch((err) => {
+      console.warn('Error updating ticket status in Supabase:', err);
+    });
     if (targetTicket && targetTicket.customerId) {
       setNotifications((prev) => [
         {
@@ -1651,6 +1853,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return t;
       })
     );
+    dbUpdateTicket(id, { leadTrackingStatus, adminNotes }).catch((err) => {
+      console.warn('Error updating ticket lead tracking in Supabase:', err);
+    });
     addToast('success', 'Lead Tracking Updated', `Marked as "${leadTrackingStatus}".`);
   };
 
@@ -1692,6 +1897,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     const targetTicket = tickets.find((t) => t.id === ticketId);
+    dbAddTicketReply(ticketId, newReply, targetTicket?.customerId, targetTicket?.subject).catch((err) => {
+      console.warn('Error adding ticket reply in Supabase:', err);
+    });
+
     if (targetTicket && sender === 'Admin' && targetTicket.customerId) {
       setNotifications((prev) => [
         {
@@ -1712,6 +1921,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markNotificationRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    dbMarkNotificationRead(id).catch((err) => {
+      console.warn('Error marking notification read in Supabase:', err);
+    });
+  };
+
+  const markAllNotificationsRead = (customerId?: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (!customerId || n.customerId === customerId ? { ...n, read: true } : n))
+    );
+    if (customerId) {
+      dbMarkAllNotificationsRead(customerId).catch((err) => {
+        console.warn('Error marking all notifications read in Supabase:', err);
+      });
+    }
   };
 
   // Payment Actions
@@ -1723,12 +1946,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       invoiceNumber: `INV-2026-${Math.floor(100 + Math.random() * 900)}`,
     };
     setPayments((prev) => [newPayment, ...prev]);
+    dbAddPayment(newPayment).catch((err) => {
+      console.warn('Error adding payment in Supabase:', err);
+    });
     logActivity('payment', 'Payment Logged', `Received $${newPayment.amount} from ${newPayment.businessName}.`, session.name, newPayment.customerId);
     addToast('success', 'Payment Recorded', `Invoice ${newPayment.invoiceNumber} created.`);
   };
 
   const updatePaymentState = (id: string, status: PaymentStatus) => {
     setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
+    dbUpdatePaymentStatus(id, status).catch((err) => {
+      console.warn('Error updating payment status in Supabase:', err);
+    });
     addToast('info', 'Payment Status Updated', `Payment status changed to ${status}.`);
   };
 
@@ -1743,6 +1972,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'New',
     };
     setEnquiries((prev) => [newEnquiry, ...prev]);
+    dbSubmitEnquiry(newEnquiry).catch((err) => {
+      console.warn('Error submitting enquiry in Supabase:', err);
+    });
     logActivity('enquiry', 'New Website Enquiry', `${newEnquiry.name} submitted an enquiry for ${newEnquiry.business}.`, 'Visitor');
     addToast('success', 'Enquiry Submitted!', 'Thank you! Our WebRunzo specialist will contact you shortly.');
   };
@@ -1760,6 +1992,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return e;
       })
     );
+    dbUpdateEnquiryStatus(id, status, adminNotes).catch((err) => {
+      console.warn('Error updating enquiry status in Supabase:', err);
+    });
     addToast('info', 'Enquiry Updated', `Enquiry marked as ${status}.`);
   };
 
@@ -1787,24 +2022,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateSettings = (updates: Partial<AdminSettings>) => {
     setSettings((prev) => ({ ...prev, ...updates }));
+    dbUpdateSettings(updates).catch((err) => {
+      console.warn('Error updating settings in Supabase:', err);
+    });
     addToast('success', 'Settings Saved', 'Platform configuration successfully updated.');
   };
 
-  const resetAllData = () => {
-    localStorage.clear();
-    setTemplates(INITIAL_TEMPLATES);
-    setPlans(INITIAL_PLANS);
-    setCustomers(INITIAL_CUSTOMERS);
-    setOrders(INITIAL_ORDERS);
-    setTickets(INITIAL_TICKETS);
-    setNotifications(INITIAL_NOTIFICATIONS);
-    setPayments(INITIAL_PAYMENTS);
-    setEnquiries(INITIAL_ENQUIRIES);
-    setActivityLogs(INITIAL_ACTIVITY_LOGS);
-    setSettings(INITIAL_SETTINGS);
-    setSession({ role: 'guest', email: '', name: 'Visitor' });
-    setCurrentExperience('public');
-    addToast('info', 'Demo Reset', 'All data has been reset to original factory demo state.');
+  const resetAllData = async () => {
+    setIsLoadingData(true);
+    try {
+      await refreshData();
+      addToast('info', 'Data Refreshed', 'Live data has been synchronized from Supabase.');
+    } catch (err) {
+      console.warn('Error refreshing data from Supabase:', err);
+    } finally {
+      setIsLoadingData(false);
+    }
   };
 
   // Modals
@@ -1837,13 +2070,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEnquiryModal({ isOpen: false });
   };
 
-  const currentClientCustomer = session.customerId
-    ? customers.find((c) => c.id === session.customerId) || customers[0]
-    : (session.role === 'premium_client' || clientTab.startsWith('premium-')
-        ? (customers.find((c) => c.clientTier === 'premium') || customers[0])
-        : customers[0]);
+  const currentClientCustomer =
+    (session.role === 'normal_client' || session.role === 'premium_client') && session.customerId
+      ? customers.find((c) => c.id === session.customerId || (session.email && c.email.toLowerCase() === session.email.toLowerCase()))
+      : undefined;
 
-  const isPremiumClient = session.role === 'premium_client' || (currentClientCustomer?.clientTier === 'premium') || clientTab.startsWith('premium-');
+  const isPremiumClient =
+    session.role === 'premium_client' || currentClientCustomer?.clientTier === 'premium';
 
   return (
     <AppContext.Provider
@@ -1913,6 +2146,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTicketLeadTracking,
         replyToTicket,
         markNotificationRead,
+        markAllNotificationsRead,
         addPayment,
         updatePaymentState,
         submitEnquiry,
@@ -1936,6 +2170,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         removeToast,
         currentClientCustomer,
         isPremiumClient,
+        isSupabaseReady: isSupabaseConfigured,
+        isLoadingData,
+        refreshData,
       }}
     >
       {children}

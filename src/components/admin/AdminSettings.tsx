@@ -63,10 +63,9 @@ export const CURRENCY_OPTIONS = [
 ];
 
 export const AdminSettings: React.FC = () => {
-  const { settings, updateSettings, resetAllData, addToast } = useApp();
+  const { settings, updateSettings, resetAllData, addToast, session } = useApp();
 
   const [adminEmail, setAdminEmail] = useState(settings.adminEmail || 'hello.webrunzo@gmail.com');
-  const [adminPassword, setAdminPassword] = useState(settings.adminPassword || 'Dev.1303');
   const [brandName, setBrandName] = useState(settings.brandName || 'Webrunzo');
   const [brandTagline, setBrandTagline] = useState(settings.brandTagline || 'High-Standard Turnkey Web Solutions for Modern Businesses');
   const [supportEmail, setSupportEmail] = useState(settings.supportEmail || 'support@webrunzo.com');
@@ -149,7 +148,6 @@ export const AdminSettings: React.FC = () => {
     e.preventDefault();
     updateSettings({
       adminEmail,
-      adminPassword,
       brandName,
       brandTagline,
       supportEmail,
@@ -213,20 +211,20 @@ export const AdminSettings: React.FC = () => {
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h3 className="font-bold text-sm text-white flex items-center gap-2">
               <KeyRound className="w-4 h-4 text-emerald-400" />
-              <span>Owner Authentication Credentials (Pre-Launch Testing)</span>
+              <span>Owner Authentication & Supabase Session</span>
             </h3>
             <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">
-              Secure Config
+              Supabase Auth Active
             </span>
           </div>
 
           <div className="text-xs text-slate-400 leading-relaxed">
-            You can modify the master credentials used to sign in to the Owner Admin Portal below.
+            Authentication is securely managed by Supabase Auth and Row Level Security. Passwords are encrypted on server-side PostgreSQL and never stored in frontend code.
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Owner Email</label>
+              <label className="block text-slate-300 font-semibold mb-1">Owner Admin Email</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                 <input
@@ -239,15 +237,12 @@ export const AdminSettings: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Owner Password</label>
+              <label className="block text-slate-300 font-semibold mb-1">Active Auth Identity</label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950 font-mono text-emerald-400 focus:outline-none focus:border-emerald-500"
-                />
+                <ShieldCheck className="w-4 h-4 text-emerald-400 absolute left-3 top-2.5" />
+                <div className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950 font-mono text-slate-300">
+                  {session.email || 'Authenticated Supabase Admin'}
+                </div>
               </div>
             </div>
           </div>

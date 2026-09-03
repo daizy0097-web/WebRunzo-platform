@@ -1,19 +1,41 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ShieldCheck, Lock, Mail, Sparkles, ArrowRight, ArrowLeft, KeyRound } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, ArrowLeft, Loader2, Database, AlertCircle } from 'lucide-react';
+import { isSupabaseConfigured } from '../../lib/supabase';
 
 export const AdminLogin: React.FC = () => {
-  const { loginAsAdmin, setCurrentExperience, settings } = useApp();
-  const [email, setEmail] = useState('hello.webrunzo@gmail.com');
-  const [password, setPassword] = useState('Dev.1303');
+  const { loginAsAdmin, setCurrentExperience } = useApp();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const success = loginAsAdmin(email, password);
-    if (!success) {
-      setError('Invalid owner email or password. Please verify credentials.');
+
+    if (!isSupabaseConfigured) {
+      setError(
+        'Supabase is not configured. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment to authenticate.'
+      );
+      return;
+    }
+
+    if (!email.trim() || !password) {
+      setError('Please provide both your owner email and password.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await loginAsAdmin(email.trim(), password);
+      if (!res.success) {
+        setError(res.error || 'Authentication failed. Please verify your credentials.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'An unexpected error occurred during authentication.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -46,37 +68,40 @@ export const AdminLogin: React.FC = () => {
           </p>
         </div>
 
-        {/* Pre-launch Test Credentials Banner */}
-        <div className="bg-emerald-950/60 border border-emerald-500/30 rounded-2xl p-4 text-xs space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
-              <KeyRound className="w-4 h-4" />
-              <span>Testing Phase Credentials</span>
-            </div>
-            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
-              Pre-Launch Active
-            </span>
+        {/* Supabase Security Status Badge */}
+        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-[11px]">
+          <div className="flex items-center gap-2 text-slate-300">
+            <Database className="w-4 h-4 text-emerald-400" />
+            <span>Supabase Auth Backend</span>
           </div>
-
-          <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px]">
-            <div className="text-slate-300">Email: <strong className="text-white">hello.webrunzo@gmail.com</strong></div>
-            <div className="text-slate-300">Password: <strong className="text-emerald-400">Dev.1303</strong></div>
-          </div>
-
-          <button
-            onClick={() => loginAsAdmin('hello.webrunzo@gmail.com', 'Dev.1303')}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <span>1-Click Authenticate as Owner</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-semibold border ${
+            isSupabaseConfigured
+              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+          }`}>
+            {isSupabaseConfigured ? 'Connected (RLS Enforced)' : 'Setup Required (.env)'}
+          </span>
         </div>
+
+        {!isSupabaseConfigured && (
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+            <div className="space-y-1">
+              <div className="font-semibold">Supabase Environment Required</div>
+              <div className="text-[11px] text-amber-200/80 leading-relaxed">
+                Authentication requires valid <code className="font-mono bg-amber-950/60 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code> and <code className="font-mono bg-amber-950/60 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code>.
+                In accordance with security directives, mock credentials and client-side bypasses are strictly disabled.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Form Login */}
         <form onSubmit={handleSubmit} className="space-y-4 pt-1">
           {error && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
-              {error}
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -86,10 +111,12 @@ export const AdminLogin: React.FC = () => {
               <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
               <input
                 type="email"
+                placeholder="admin@webrunzo.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full text-xs pl-10 pr-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-white"
+                disabled={isLoading}
+                className="w-full text-xs pl-10 pr-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-white placeholder:text-slate-600 disabled:opacity-50"
               />
             </div>
           </div>
@@ -100,25 +127,37 @@ export const AdminLogin: React.FC = () => {
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
               <input
                 type="password"
+                placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full text-xs pl-10 pr-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-white"
+                disabled={isLoading}
+                className="w-full text-xs pl-10 pr-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950/80 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-white placeholder:text-slate-600 disabled:opacity-50"
               />
             </div>
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition border border-slate-700 shadow flex items-center justify-center gap-2 cursor-pointer"
+            disabled={isLoading || !isSupabaseConfigured}
+            className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-bold text-xs transition border border-emerald-500/30 shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
           >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Sign In to Admin Portal</span>
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Verifying Supabase Credentials...</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                <span>Sign In to Admin Portal</span>
+              </>
+            )}
           </button>
         </form>
 
         <div className="text-center text-[11px] text-slate-500">
-          Role-Based Access Control • Full Platform Authority
+          Supabase Row-Level Security • Role-Based Access Control
         </div>
 
       </div>

@@ -23,8 +23,10 @@ import {
   ShieldCheck,
   Zap,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Bell
 } from 'lucide-react';
+import { ClientNotificationCenter } from './ClientNotificationCenter';
 
 interface Props {
   children: React.ReactNode;
@@ -46,17 +48,22 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
     templates,
     plans,
     orders,
-    tickets
+    tickets,
+    notifications
   } = useApp();
 
   const availability = useAgentAvailability(settings);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const customer = currentClientCustomer;
   const isVip = isPremiumClient || customer?.clientTier === 'premium' || session.role === 'premium_client' || clientTab.startsWith('premium-');
   const currentPlan = plans.find((p) => p.id === customer?.planId);
   const currentTemplate = templates.find((t) => t.id === customer?.templateId);
+
+  const clientNotifs = notifications.filter((n) => n.customerId === customer?.id);
+  const unreadNotifsCount = clientNotifs.filter((n) => !n.read).length;
 
   const myOrdersCount = orders.filter((o) => o.customerId === customer?.id && o.status !== 'Completed').length;
   const myOpenTickets = tickets.filter((t) => (t.customerId === customer?.id || t.email === customer?.email) && t.status !== 'Resolved' && t.status !== 'Closed').length;
@@ -283,12 +290,30 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
             {isVip ? 'Webrunzo VIP Portal' : 'Webrunzo Client Portal'}
           </span>
         </div>
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="text-slate-300 p-2 rounded-lg hover:bg-slate-800"
-        >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            id="btn-client-notifications-mobile"
+            type="button"
+            onClick={() => setShowNotifications(!showNotifications)}
+            className={`relative p-2 rounded-lg transition cursor-pointer ${
+              showNotifications ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300 hover:text-white'
+            }`}
+            title="Notifications"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadNotifsCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white shadow-sm ring-2 ring-slate-900">
+                {unreadNotifsCount > 9 ? '9+' : unreadNotifsCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="text-slate-300 p-2 rounded-lg hover:bg-slate-800"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Drawer */}
@@ -343,6 +368,34 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                id="btn-client-notifications-desktop"
+                type="button"
+                onClick={() => setShowNotifications(!showNotifications)}
+                className={`relative p-2 rounded-xl border transition cursor-pointer flex items-center justify-center ${
+                  showNotifications
+                    ? 'bg-slate-800 border-indigo-500 text-white shadow-md shadow-indigo-500/10'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 hover:border-slate-700'
+                }`}
+                title="Notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadNotifsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-sm ring-2 ring-slate-900 animate-pulse">
+                    {unreadNotifsCount > 9 ? '9+' : unreadNotifsCount}
+                  </span>
+                )}
+              </button>
+
+              <ClientNotificationCenter
+                isOpen={showNotifications}
+                onClose={() => setShowNotifications(false)}
+                customerId={customer?.id || ''}
+              />
+            </div>
+
             {customer && (
               <button
                 onClick={() => openPreviewModal(currentTemplate, customer)}

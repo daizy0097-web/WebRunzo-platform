@@ -23,6 +23,7 @@ import {
   CalendarCheck,
   LifeBuoy
 } from 'lucide-react';
+import { AdminNotificationCenter } from './AdminNotificationCenter';
 
 interface Props {
   children: React.ReactNode;
@@ -48,6 +49,7 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
   const newEnquiriesCount = enquiries.filter((e) => e.status === 'New').length;
   const newOrdersCount = orders.filter((o) => o.status === 'New').length;
   const openTicketsCount = tickets.filter((t) => t.status !== 'Resolved' && t.status !== 'Closed').length;
+  const totalUnreadAlerts = newOrdersCount + newEnquiriesCount + openTicketsCount;
 
   const navItems: { id: AdminTab; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'dashboard', label: 'Overview Dashboard', icon: LayoutDashboard },
@@ -157,19 +159,38 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
         
         {/* Mobile Header Bar */}
         <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2" onClick={() => setAdminTab('dashboard')}>
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setAdminTab('dashboard')}>
             <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-sm">
               W
             </div>
             <span className="font-bold text-sm text-white">Webrunzo Admin</span>
           </div>
 
-          <button
-            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
-            className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
-          >
-            {mobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              id="btn-admin-notifications-mobile"
+              type="button"
+              onClick={() => setShowNotifications(!showNotifications)}
+              className={`relative p-2 rounded-lg transition cursor-pointer ${
+                showNotifications ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300 hover:text-white'
+              }`}
+              title="Admin Notifications"
+            >
+              <Bell className="w-4 h-4" />
+              {totalUnreadAlerts > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white shadow-sm ring-2 ring-slate-900">
+                  {totalUnreadAlerts > 9 ? '9+' : totalUnreadAlerts}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+              className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
+            >
+              {mobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Drawer Menu */}
@@ -204,6 +225,59 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
             })}
           </div>
         )}
+
+        {/* Desktop Top Header Bar */}
+        <header className="hidden md:flex bg-slate-900/90 backdrop-blur border-b border-slate-800 px-6 py-3.5 items-center justify-between gap-4 sticky top-0 z-30">
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <span>Admin Console</span>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+            <span className="text-white font-semibold capitalize">
+              {navItems.find((item) => item.id === adminTab)?.label || adminTab}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* System Status Indicators */}
+            <div className="hidden lg:flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800 text-[11px] text-slate-400">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-slate-300 font-medium">Supabase Cloud</span>
+              </div>
+              <span className="text-slate-700">|</span>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-sky-400" />
+                <span className="text-slate-300 font-medium">Cloudflare Edge</span>
+              </div>
+            </div>
+
+            {/* Admin Notification Bell */}
+            <div className="relative">
+              <button
+                id="btn-admin-notifications-desktop"
+                type="button"
+                onClick={() => setShowNotifications(!showNotifications)}
+                className={`relative p-2 rounded-xl border transition cursor-pointer flex items-center justify-center ${
+                  showNotifications
+                    ? 'bg-slate-800 border-emerald-500 text-white shadow-md shadow-emerald-500/10'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-850 hover:border-slate-700'
+                }`}
+                title="Admin Notification Center"
+              >
+                <Bell className="w-4 h-4" />
+                {totalUnreadAlerts > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-sm ring-2 ring-slate-900 animate-pulse">
+                    {totalUnreadAlerts > 9 ? '9+' : totalUnreadAlerts}
+                  </span>
+                )}
+              </button>
+
+              <AdminNotificationCenter
+                isOpen={showNotifications}
+                onClose={() => setShowNotifications(false)}
+              />
+            </div>
+          </div>
+        </header>
 
         {/* Main Content Area */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto overflow-y-auto">

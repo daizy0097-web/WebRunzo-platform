@@ -16,7 +16,6 @@ export const PublicNavbar: React.FC = () => {
   const { 
     setCurrentExperience, 
     setPublicPage,
-    loginAsClient, 
     openEnquiryModal,
     openConciergeModal,
     session 
@@ -93,8 +92,8 @@ export const PublicNavbar: React.FC = () => {
           {/* Right Action CTA & Portal Links */}
           <div className="hidden sm:flex items-center gap-3">
             <button
-              onClick={() => loginAsClient()}
-              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-900 border border-slate-800 transition"
+              onClick={() => setCurrentExperience('client')}
+              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-900 border border-slate-800 transition cursor-pointer"
             >
               Client Login
             </button>
@@ -173,9 +172,9 @@ export const PublicNavbar: React.FC = () => {
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
-                loginAsClient();
+                setCurrentExperience('client');
               }}
-              className="w-full text-center py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 font-bold text-xs"
+              className="w-full text-center py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 font-bold text-xs cursor-pointer"
             >
               Client Portal Login
             </button>

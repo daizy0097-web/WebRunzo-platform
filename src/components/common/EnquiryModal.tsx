@@ -24,8 +24,7 @@ export const EnquiryModal: React.FC = () => {
     plans, 
     submitEnquiry, 
     setCurrentExperience,
-    setAdminTab,
-    loginAsAdmin
+    setAdminTab
   } = useApp();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -376,7 +375,7 @@ export const EnquiryModal: React.FC = () => {
                 <button
                   onClick={() => {
                     closeEnquiryModal();
-                    loginAsAdmin();
+                    setCurrentExperience('admin');
                     setAdminTab('enquiries');
                   }}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-5 py-2.5 rounded-xl transition shadow cursor-pointer"

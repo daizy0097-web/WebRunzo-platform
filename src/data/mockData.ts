@@ -1496,7 +1496,6 @@ export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [
 
 export const INITIAL_SETTINGS: AdminSettings = {
   adminEmail: 'hello.webrunzo@gmail.com',
-  adminPassword: 'Dev.1303',
   businessName: 'WebRunzo Digital Systems',
   brandName: 'WebRunzo',
   supportEmail: 'support@webrunzo.com',

@@ -417,7 +417,6 @@ export type AgentAvailabilityMode = 'auto' | 'online' | 'away' | 'offline';
 
 export interface AdminSettings {
   adminEmail: string;
-  adminPassword: string;
   businessName: string;
   brandName?: string;
   supportEmail: string;
