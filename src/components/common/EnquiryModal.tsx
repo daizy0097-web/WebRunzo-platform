@@ -23,8 +23,6 @@ export const EnquiryModal: React.FC = () => {
     templates, 
     plans, 
     submitEnquiry, 
-    setCurrentExperience,
-    setAdminTab
   } = useApp();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -321,7 +319,7 @@ export const EnquiryModal: React.FC = () => {
                   rows={2}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Tell us about any specific pages, integrations (Stripe, Calendly), or custom features you need..."
+                  placeholder="Tell us about any specific pages, integrations (Razorpay, Calendly), or custom features you need..."
                   className="w-full text-xs p-3 rounded-xl border border-slate-800 bg-slate-950 text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
                 />
               </div>
@@ -345,48 +343,52 @@ export const EnquiryModal: React.FC = () => {
             </form>
           )}
 
-          {/* STEP 4: Success / Demo Confirmation */}
+          {/* STEP 4: Success / Client Confirmation */}
           {step === 4 && (
-            <div className="text-center py-6 space-y-4">
+            <div className="text-center py-6 space-y-5">
               <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-inner">
                 <Check className="w-8 h-8" />
               </div>
 
               <div>
                 <h4 className="text-xl font-extrabold text-white">Enquiry Received Successfully!</h4>
-                <p className="text-xs text-slate-300 max-w-md mx-auto mt-1 leading-relaxed">
-                  Thank you, <strong>{name}</strong>! Your project request for <strong>{business}</strong> has been logged in WebRunzo.
+                <p className="text-xs text-slate-300 max-w-md mx-auto mt-1.5 leading-relaxed">
+                  Thank you, <strong>{name}</strong>! Your project request for <strong>{business}</strong> has been logged with WebRunzo.
                 </p>
               </div>
 
-              {/* Demo Explainer Box */}
-              <div className="bg-indigo-950/60 border border-indigo-500/30 rounded-xl p-4 text-xs text-left text-indigo-200 space-y-2">
+              {/* Request Details Summary */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 text-xs text-left max-w-lg mx-auto flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Package Selected</div>
+                  <div className="font-semibold text-white mt-0.5">{chosenPlan.name} • {formatINR(chosenPlan.priceINR)}/mo</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Template Concept</div>
+                  <div className="font-semibold text-indigo-300 mt-0.5">{chosenTemplate.name}</div>
+                </div>
+              </div>
+
+              {/* Client Next-Steps Status Message */}
+              <div className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-4 text-xs text-left text-slate-300 space-y-2.5 max-w-lg mx-auto">
                 <div className="font-bold flex items-center gap-1.5 text-white">
                   <Sparkles className="w-4 h-4 text-indigo-400" />
-                  <span>Demonstration Live Flow:</span>
+                  <span>What happens next?</span>
                 </div>
-                <p className="text-[11px] leading-relaxed text-indigo-200">
-                  Your new enquiry is now instantly visible in the <strong>Admin Panel → Enquiries</strong> view.
-                  As an Admin, you can click <strong>"Convert to Customer"</strong> to automatically provision this client account and assign login credentials!
-                </p>
+                <ul className="text-[11px] leading-relaxed text-slate-300 space-y-1.5 list-disc list-inside">
+                  <li>Our solutions team is reviewing your project details and chosen requirements.</li>
+                  <li>We will reach out to <strong>{email}</strong> within 1 business day with your scope confirmation.</li>
+                  <li>Once finalized, your personalized Client Portal access and setup will be activated.</li>
+                </ul>
               </div>
 
-              <div className="pt-3 flex flex-wrap items-center justify-center gap-3">
-                <button
-                  onClick={() => {
-                    closeEnquiryModal();
-                    setCurrentExperience('admin');
-                    setAdminTab('enquiries');
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-5 py-2.5 rounded-xl transition shadow cursor-pointer"
-                >
-                  Open Admin Enquiries Inbox →
-                </button>
+              <div className="pt-2 flex items-center justify-center">
                 <button
                   onClick={closeEnquiryModal}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-4 py-2.5 rounded-xl transition border border-slate-700 cursor-pointer"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-6 py-2.5 rounded-xl transition shadow cursor-pointer inline-flex items-center gap-2"
                 >
-                  Close Window
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Done</span>
                 </button>
               </div>
             </div>

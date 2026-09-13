@@ -14,7 +14,8 @@ import {
   UserPlus, 
   ArrowRight,
   Clock,
-  CheckCheck
+  CheckCheck,
+  Loader2
 } from 'lucide-react';
 
 export const AdminEnquiries: React.FC = () => {
@@ -30,6 +31,7 @@ export const AdminEnquiries: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<EnquiryStatus | 'All'>('All');
+  const [convertingId, setConvertingId] = useState<string | null>(null);
 
   const filteredEnquiries = enquiries.filter((e) => {
     const matchesStatus = statusFilter === 'All' || e.status === statusFilter;
@@ -41,11 +43,17 @@ export const AdminEnquiries: React.FC = () => {
     return matchesStatus && matchesSearch;
   });
 
-  const handleConvert = (enquiryId: string) => {
-    const newCustomer = convertEnquiryToCustomer(enquiryId);
-    if (newCustomer) {
-      setSelectedCustomerIdForAdmin(newCustomer.id);
-      setAdminTab('customer-profile');
+  const handleConvert = async (enquiryId: string) => {
+    if (convertingId) return;
+    setConvertingId(enquiryId);
+    try {
+      const newCustomer = await convertEnquiryToCustomer(enquiryId);
+      if (newCustomer) {
+        setSelectedCustomerIdForAdmin(newCustomer.id);
+        setAdminTab('customer-profile');
+      }
+    } finally {
+      setConvertingId(null);
     }
   };
 
@@ -184,11 +192,22 @@ export const AdminEnquiries: React.FC = () => {
 
                       {enq.status !== 'Converted' && (
                         <button
+                          id={`btn-convert-enquiry-${enq.id}`}
                           onClick={() => handleConvert(enq.id)}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow transition flex items-center gap-1.5 cursor-pointer"
+                          disabled={convertingId === enq.id}
+                          className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow transition flex items-center gap-1.5 cursor-pointer"
                         >
-                          <UserPlus className="w-3.5 h-3.5" />
-                          <span>Convert to Client Account</span>
+                          {convertingId === enq.id ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Converting...</span>
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus className="w-3.5 h-3.5" />
+                              <span>Convert to Client Account</span>
+                            </>
+                          )}
                         </button>
                       )}
                     </div>

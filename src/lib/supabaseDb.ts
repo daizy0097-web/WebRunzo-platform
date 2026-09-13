@@ -19,11 +19,21 @@ import {
   FileCategory,
   PaymentStatus,
   OrderStatus,
+  ProjectStatus,
+  ALLOWED_PROJECT_TRANSITIONS,
   EnquiryStatus,
   LeadTrackingStatus,
   QueryStatus,
   BackupType,
 } from '../types';
+import {
+  getProjectStatus,
+  isValidProjectTransition,
+  getCanonicalMilestones,
+  embedProjectStatusInNotes,
+  mapProjectStatusToDatabaseOrderStatus,
+  getStatusNotification,
+} from '../utils/projectLifecycle';
 
 // Helper to format bytes
 function formatBytes(bytes: number): string {
@@ -215,7 +225,7 @@ export function mapCustomerFromDb(
 
 // Map Order from DB
 export function mapOrderFromDb(row: any): Order {
-  return {
+  const rawOrder: Order = {
     id: row.id,
     orderNumber: row.order_number,
     customerId: row.customer_id,
@@ -235,6 +245,9 @@ export function mapOrderFromDb(row: any): Order {
     clientTier: row.client_tier || 'normal',
     milestones: Array.isArray(row.milestones) ? row.milestones : [],
   };
+
+  rawOrder.projectStatus = getProjectStatus(rawOrder);
+  return rawOrder;
 }
 
 // Map Payment from DB
@@ -556,6 +569,14 @@ export async function fetchApplicationData(
     supabase.from('activity_logs').select('*').order('timestamp', { ascending: false }).limit(50),
   ]);
 
+  console.log('[AUTH_DIAGNOSTIC] fetchApplicationData client queries completed:', {
+    role,
+    customerId,
+    customersReturned: custRes.data?.length ?? 0,
+    customersError: custRes.error ? { code: custRes.error.code, message: custRes.error.message } : null,
+    customerIds: (custRes.data || []).map((c: any) => ({ id: c.id, business: c.business_name })),
+  });
+
   const storageMap = new Map((storageRes.data || []).map((s: any) => [s.customer_id, s]));
   const filesMap = new Map<string, any[]>();
   (filesRes.data || []).forEach((f: any) => {
@@ -616,8 +637,8 @@ export async function dbAddCustomer(customer: Customer): Promise<{ error?: strin
       email: customer.email,
       phone: customer.phone,
       client_tier: customer.clientTier,
-      plan_id: customer.planId,
-      template_id: customer.templateId,
+      plan_id: customer.planId && customer.planId.trim() ? customer.planId : null,
+      template_id: customer.templateId && customer.templateId.trim() ? customer.templateId : null,
       payment_status: customer.paymentStatus,
       plan_start_date: customer.planStartDate,
       plan_expiry_date: customer.planExpiryDate,
@@ -979,35 +1000,160 @@ export async function dbUpdatePlan(id: string, updates: Partial<Plan>): Promise<
   }
 }
 
-// ORDER CRUD
-export async function dbAddOrder(order: Order): Promise<{ error?: string }> {
+/**
+ * Helper to ensure a customer record exists in public.customers before dependent records
+ * (e.g., orders, payments) are inserted, strictly preventing foreign key constraint
+ * violations like orders_customer_id_fkey and payments_customer_id_fkey.
+ */
+export async function ensureCustomerExists(
+  customerId: string,
+  fallbackData?: {
+    name?: string;
+    businessName?: string;
+    email?: string;
+    phone?: string;
+    clientTier?: string;
+    planId?: string;
+    templateId?: string;
+    paymentStatus?: string;
+  }
+): Promise<void> {
+  if (!isSupabaseConfigured || !customerId) return;
+  try {
+    const { data: existing } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('id', customerId)
+      .maybeSingle();
+
+    if (existing) return;
+
+    // Small delay in case a concurrent customer creation transaction is in-flight
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const { data: retryCheck } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('id', customerId)
+      .maybeSingle();
+
+    if (retryCheck) return;
+
+    // Upsert baseline customer record to satisfy relational foreign key constraints
+    await supabase.from('customers').upsert(
+      {
+        id: customerId,
+        name: fallbackData?.name || 'Customer',
+        business_name: fallbackData?.businessName || 'Business Client',
+        email: fallbackData?.email || 'client@webrunzo.com',
+        phone: fallbackData?.phone || null,
+        client_tier: fallbackData?.clientTier === 'premium' ? 'premium' : 'normal',
+        plan_id: fallbackData?.planId && fallbackData.planId.trim() ? fallbackData.planId : null,
+        template_id: fallbackData?.templateId && fallbackData.templateId.trim() ? fallbackData.templateId : null,
+        payment_status: fallbackData?.paymentStatus || 'Paid',
+        website_status: 'Live',
+        account_status: 'Active',
+      },
+      { onConflict: 'id', ignoreDuplicates: true }
+    );
+  } catch (err) {
+    console.warn('ensureCustomerExists notice:', err);
+  }
+}
+
+// ORDER CRUD (Hardened: Admin direct insert, Client server-authoritative, Anon blocked)
+export async function dbAddOrder(order: Order): Promise<{ error?: string; order?: any }> {
   if (!isSupabaseConfigured) return {};
   try {
-    const { error } = await supabase.from('orders').insert({
-      id: order.id,
-      order_number: order.orderNumber,
-      customer_id: order.customerId,
-      plan_id: order.planId,
-      template_id: order.templateId,
-      client_name: order.clientName,
-      business_name: order.businessName,
-      email: order.email,
-      phone: order.phone,
-      amount: order.amount,
-      status: order.status,
-      payment_status: order.paymentStatus,
-      date: order.date,
-      delivery_due_date: order.deliveryDueDate,
-      requirements: order.requirements,
-      internal_notes: order.internalNotes || null,
-      client_tier: order.clientTier,
-      milestones: order.milestones || [],
-    });
-    if (error) {
-      console.error('dbAddOrder error:', error);
-      return { error: error.message };
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('dbAddOrder blocked: Anonymous order creation is prohibited.');
+      return { error: 'Unauthorized: Anonymous users cannot create orders directly.' };
     }
-    return {};
+
+    // Check if user is admin
+    const isAdminUser =
+      session.user.email?.toLowerCase().trim() === 'hello.webrunzo@gmail.com' ||
+      (await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()).data?.role === 'admin';
+
+    if (isAdminUser) {
+      if (order.customerId) {
+        await ensureCustomerExists(order.customerId, {
+          name: order.clientName,
+          businessName: order.businessName,
+          email: order.email,
+          phone: order.phone,
+          clientTier: order.clientTier,
+          planId: order.planId,
+          templateId: order.templateId,
+          paymentStatus: order.paymentStatus,
+        });
+      }
+
+      const payload = {
+        id: order.id,
+        order_number: order.orderNumber,
+        customer_id: order.customerId,
+        plan_id: order.planId && order.planId.trim() ? order.planId : null,
+        template_id: order.templateId && order.templateId.trim() ? order.templateId : null,
+        client_name: order.clientName,
+        business_name: order.businessName,
+        email: order.email,
+        phone: order.phone,
+        amount: order.amount,
+        status: order.status,
+        payment_status: order.paymentStatus,
+        date: order.date,
+        delivery_due_date: order.deliveryDueDate,
+        requirements: order.requirements,
+        internal_notes: order.internalNotes || null,
+        client_tier: order.clientTier,
+        milestones: order.milestones || [],
+      };
+
+      let { error } = await supabase.from('orders').insert(payload);
+
+      // If a foreign key violation occurs, ensure customer and retry once
+      if (error && (error as any).code === '23503' && order.customerId) {
+        await ensureCustomerExists(order.customerId, {
+          name: order.clientName,
+          businessName: order.businessName,
+          email: order.email,
+          phone: order.phone,
+          clientTier: order.clientTier,
+          planId: order.planId,
+          templateId: order.templateId,
+          paymentStatus: order.paymentStatus,
+        });
+        const retryRes = await supabase.from('orders').insert(payload);
+        error = retryRes.error;
+      }
+
+      if (error) {
+        console.error('dbAddOrder admin insert error:', error);
+        return { error: error.message };
+      }
+      return {};
+    } else {
+      // Authenticated Client path: Enforce server-authoritative creation via Express API
+      const res = await fetch('/api/payments/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          planId: order.planId,
+          templateId: order.templateId,
+          requirements: order.requirements,
+        }),
+      });
+
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        return { error: resData.error || 'Server-authoritative order creation failed.' };
+      }
+      return { order: resData.order };
+    }
   } catch (err: any) {
     return { error: err.message };
   }
@@ -1045,6 +1191,144 @@ export async function dbDeleteOrder(id: string): Promise<{ error?: string }> {
     const { error } = await supabase.from('orders').delete().eq('id', id);
     if (error) {
       console.error('dbDeleteOrder error:', error);
+      return { error: error.message };
+    }
+    return {};
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+// CLIENT PROGRESS TRACKING: UPDATE PROJECT STATUS
+export async function dbUpdateProjectStatus(
+  orderId: string,
+  newStatus: ProjectStatus,
+  options?: {
+    adminToken?: string;
+    adminNote?: string;
+    existingOrder?: Order;
+  }
+): Promise<{ error?: string; order?: any }> {
+  if (!isSupabaseConfigured) return {};
+
+  try {
+    // 1. If adminToken is present, attempt server-side authoritative API route
+    if (options?.adminToken) {
+      try {
+        const res = await fetch('/api/admin/orders/update-status', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${options.adminToken}`,
+          },
+          body: JSON.stringify({
+            orderId,
+            newStatus,
+            adminNote: options.adminNote,
+          }),
+        });
+
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.success) {
+          const errMsg = data?.error || `Server status update failed with HTTP ${res.status}`;
+          return { error: errMsg };
+        }
+        return { order: data.order };
+      } catch (apiErr: any) {
+        console.warn('Admin API route error, attempting client fallback:', apiErr?.message);
+      }
+    }
+
+    // 2. Direct Supabase Client fallback
+    let order = options?.existingOrder;
+    if (!order) {
+      const { data: fetchedRow, error: fetchErr } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .maybeSingle();
+
+      if (fetchErr || !fetchedRow) {
+        return { error: fetchErr?.message || 'Order not found.' };
+      }
+      order = mapOrderFromDb(fetchedRow);
+    }
+
+    // Validate transition
+    const currentStatus = order.projectStatus || getProjectStatus(order);
+    if (!isValidProjectTransition(currentStatus, newStatus)) {
+      const allowed = ALLOWED_PROJECT_TRANSITIONS[currentStatus] || [];
+      return {
+        error: `Invalid transition from "${currentStatus}" to "${newStatus}". Allowed transitions: [${allowed.join(', ')}]`,
+      };
+    }
+
+    const updatedMilestones = getCanonicalMilestones(newStatus, order.milestones);
+    const updatedNotes = embedProjectStatusInNotes(order.internalNotes, newStatus);
+    const dbStatus = mapProjectStatusToDatabaseOrderStatus(newStatus);
+
+    const { error: updateErr } = await supabase
+      .from('orders')
+      .update({
+        status: dbStatus,
+        milestones: updatedMilestones,
+        internal_notes: updatedNotes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', orderId);
+
+    if (updateErr) {
+      console.error('dbUpdateProjectStatus error:', updateErr);
+      return { error: updateErr.message };
+    }
+
+    // Update customer website_status if Live or In Progress
+    if (order.customerId) {
+      if (newStatus === 'Live') {
+        await supabase
+          .from('customers')
+          .update({ website_status: 'Live', updated_at: new Date().toISOString() })
+          .eq('id', order.customerId);
+      } else if (newStatus === 'In Progress') {
+        await supabase
+          .from('customers')
+          .update({ website_status: 'In Progress', updated_at: new Date().toISOString() })
+          .eq('id', order.customerId);
+      }
+
+      // Add notification
+      const notifData = getStatusNotification(newStatus, order.businessName);
+      await dbAddNotification({
+        id: `notif-${Date.now()}`,
+        customerId: order.customerId,
+        title: notifData.title,
+        message: notifData.message,
+        date: new Date().toISOString(),
+        read: false,
+        type: notifData.type === 'warning' ? 'info' : notifData.type,
+      });
+    }
+
+    return {};
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+export async function dbAddNotification(notification: ClientNotification): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {};
+  try {
+    const { error } = await supabase.from('client_notifications').insert({
+      id: notification.id,
+      customer_id: notification.customerId,
+      title: notification.title,
+      message: notification.message,
+      date: notification.date || new Date().toISOString(),
+      read: notification.read ?? false,
+      type: notification.type || 'info',
+    });
+    if (error) {
+      console.warn('dbAddNotification warning:', error.message);
       return { error: error.message };
     }
     return {};
@@ -1233,7 +1517,15 @@ export async function dbMarkAllNotificationsRead(customerId: string): Promise<{ 
 export async function dbAddPayment(payment: Payment): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {};
   try {
-    const { error } = await supabase.from('payments').insert({
+    if (payment.customerId) {
+      await ensureCustomerExists(payment.customerId, {
+        name: payment.customerName,
+        businessName: payment.businessName,
+        paymentStatus: payment.status,
+      });
+    }
+
+    const payload = {
       id: payment.id,
       transaction_id: payment.transactionId,
       invoice_number: payment.invoiceNumber,
@@ -1245,7 +1537,21 @@ export async function dbAddPayment(payment: Payment): Promise<{ error?: string }
       date: payment.date,
       status: payment.status,
       method: payment.method,
-    });
+    };
+
+    let { error } = await supabase.from('payments').insert(payload);
+
+    // If a foreign key violation still occurs (e.g. concurrent race condition), ensure customer and retry once
+    if (error && (error as any).code === '23503' && payment.customerId) {
+      await ensureCustomerExists(payment.customerId, {
+        name: payment.customerName,
+        businessName: payment.businessName,
+        paymentStatus: payment.status,
+      });
+      const retryRes = await supabase.from('payments').insert(payload);
+      error = retryRes.error;
+    }
+
     if (error) {
       console.error('dbAddPayment error:', error);
       return { error: error.message };

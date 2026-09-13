@@ -58,7 +58,7 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
     { id: 'websites', label: 'Website Management', icon: Globe },
     { id: 'storage', label: 'Storage & Quotas', icon: HardDrive },
     { id: 'backups', label: 'Backups & Recovery', icon: ShieldCheck },
-    { id: 'subscriptions', label: 'Subscription Lifecycle', icon: CalendarCheck },
+    { id: 'customer-tiers', label: 'Subscription & Tiers', icon: CalendarCheck },
     { id: 'payments', label: 'Billing & Invoices', icon: CreditCard },
     { id: 'templates', label: 'Template Catalog', icon: Layout },
     { id: 'enquiries', label: 'Sales Leads', icon: Inbox, badge: newEnquiriesCount },
@@ -93,7 +93,9 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
           </div>
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = adminTab === item.id || (item.id === 'customers' && adminTab === 'customer-profile');
+            const isActive = adminTab === item.id || 
+              (item.id === 'customers' && adminTab === 'customer-profile') ||
+              (item.id === 'customer-tiers' && adminTab === 'subscriptions');
             return (
               <button
                 key={item.id}
@@ -198,7 +200,7 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
           <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 space-y-2 animate-in fade-in">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = adminTab === item.id;
+              const isActive = adminTab === item.id || (item.id === 'customer-tiers' && adminTab === 'subscriptions');
               return (
                 <button
                   key={item.id}
@@ -232,7 +234,7 @@ export const AdminLayout: React.FC<Props> = ({ children }) => {
             <span>Admin Console</span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
             <span className="text-white font-semibold capitalize">
-              {navItems.find((item) => item.id === adminTab)?.label || adminTab}
+              {navItems.find((item) => item.id === adminTab)?.label || (adminTab === 'subscriptions' ? 'Subscription & Tiers' : adminTab)}
             </span>
           </div>
 

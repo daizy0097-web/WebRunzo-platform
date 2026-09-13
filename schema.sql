@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
   phone TEXT,
   amount NUMERIC NOT NULL,
   status TEXT DEFAULT 'New' CHECK (status IN ('New', 'Pending', 'In Progress', 'Completed', 'Cancelled')),
-  payment_status TEXT DEFAULT 'Paid' CHECK (payment_status IN ('Paid', 'Pending', 'Failed', 'Refunded')),
+  payment_status TEXT DEFAULT 'Pending' CHECK (payment_status IN ('Paid', 'Pending', 'Failed', 'Refunded')),
   date TIMESTAMPTZ DEFAULT NOW(),
   delivery_due_date DATE,
   requirements TEXT,
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS public.payments (
   plan_name TEXT NOT NULL,
   date TIMESTAMPTZ DEFAULT NOW(),
   status TEXT DEFAULT 'Paid' CHECK (status IN ('Paid', 'Pending', 'Failed', 'Refunded')),
-  method TEXT DEFAULT 'Credit Card / Stripe',
+  method TEXT DEFAULT 'Razorpay / Online',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -326,12 +326,17 @@ CREATE TABLE IF NOT EXISTS public.admin_settings (
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'admin'
+  RETURN (
+    LOWER(TRIM(COALESCE(auth.jwt() ->> 'email', ''))) = 'hello.webrunzo@gmail.com'
+    OR EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated;
 
 -- Gets the customer_id associated with the authenticated user
 CREATE OR REPLACE FUNCTION public.get_auth_customer_id()
@@ -365,17 +370,40 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 -- Automatically create profile on new user signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_customer_id TEXT;
+  v_client_tier TEXT;
+  v_business_name TEXT;
 BEGIN
-  INSERT INTO public.profiles (id, email, full_name, role, client_tier)
+  -- Look for an existing customer record matching this user's email
+  SELECT id, client_tier, business_name INTO v_customer_id, v_client_tier, v_business_name
+  FROM public.customers
+  WHERE LOWER(email) = LOWER(NEW.email)
+  LIMIT 1;
+
+  INSERT INTO public.profiles (id, email, full_name, role, client_tier, customer_id, business_name)
   VALUES (
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
     COALESCE(NEW.raw_user_meta_data->>'role', 'client'),
-    COALESCE(NEW.raw_user_meta_data->>'client_tier', 'normal')
+    COALESCE(v_client_tier, NEW.raw_user_meta_data->>'client_tier', 'normal'),
+    v_customer_id,
+    v_business_name
   )
   ON CONFLICT (id) DO UPDATE
-  SET email = EXCLUDED.email;
+  SET email = EXCLUDED.email,
+      full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name),
+      customer_id = COALESCE(public.profiles.customer_id, EXCLUDED.customer_id),
+      business_name = COALESCE(public.profiles.business_name, EXCLUDED.business_name);
+
+  -- Link user_id on customer record if matched
+  IF v_customer_id IS NOT NULL THEN
+    UPDATE public.customers
+    SET user_id = NEW.id
+    WHERE id = v_customer_id AND user_id IS NULL;
+  END IF;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -385,6 +413,47 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Helper function to check if an email exists across auth.users, profiles, or customers
+CREATE OR REPLACE FUNCTION public.check_account_exists(email_input text)
+RETURNS boolean AS $$
+DECLARE
+  v_exists boolean := false;
+  v_clean_email text;
+BEGIN
+  v_clean_email := LOWER(TRIM(COALESCE(email_input, '')));
+  IF v_clean_email = '' THEN
+    RETURN false;
+  END IF;
+
+  -- 1. Check in auth.users
+  SELECT EXISTS(
+    SELECT 1 FROM auth.users WHERE LOWER(email) = v_clean_email
+  ) INTO v_exists;
+
+  IF v_exists THEN
+    RETURN true;
+  END IF;
+
+  -- 2. Check in public.profiles
+  SELECT EXISTS(
+    SELECT 1 FROM public.profiles WHERE LOWER(email) = v_clean_email
+  ) INTO v_exists;
+
+  IF v_exists THEN
+    RETURN true;
+  END IF;
+
+  -- 3. Check in public.customers
+  SELECT EXISTS(
+    SELECT 1 FROM public.customers WHERE LOWER(email) = v_clean_email
+  ) INTO v_exists;
+
+  RETURN v_exists;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+GRANT EXECUTE ON FUNCTION public.check_account_exists(text) TO anon, authenticated;
 
 -- ==============================================================================
 -- 11. ENABLE ROW LEVEL SECURITY (RLS) ON ALL TABLES
@@ -407,23 +476,64 @@ ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_settings ENABLE ROW LEVEL SECURITY;
 
 -- ==============================================================================
--- 12. RLS POLICIES
+-- 12. ROW LEVEL SECURITY (RLS) POLICIES & INTEGRITY TRIGGERS
 -- ==============================================================================
 
--- PROFILES
+-- ------------------------------------------------------------------------------
+-- A. PROFILES TABLE PROTECTION & RLS
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.protect_profile_fields()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    IF NEW.role IS DISTINCT FROM OLD.role THEN
+      RAISE EXCEPTION 'Privilege escalation rejected: non-admin users cannot alter their account role.';
+    END IF;
+    IF NEW.customer_id IS DISTINCT FROM OLD.customer_id THEN
+      RAISE EXCEPTION 'Unauthorized modification: non-admin users cannot alter their linked customer identifier.';
+    END IF;
+    IF NEW.client_tier IS DISTINCT FROM OLD.client_tier THEN
+      RAISE EXCEPTION 'Unauthorized modification: non-admin users cannot alter their client tier.';
+    END IF;
+    IF NEW.id IS DISTINCT FROM OLD.id THEN
+      RAISE EXCEPTION 'Account identifier is immutable.';
+    END IF;
+  END IF;
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_protect_profile_fields ON public.profiles;
+CREATE TRIGGER trg_protect_profile_fields
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.protect_profile_fields();
+
 DROP POLICY IF EXISTS "Admin has full access to all profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Users can view and update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update own profile non-privileged fields" ON public.profiles;
+
 CREATE POLICY "Admin has full access to all profiles"
   ON public.profiles FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
-DROP POLICY IF EXISTS "Users can view and update their own profile" ON public.profiles;
-CREATE POLICY "Users can view and update their own profile"
-  ON public.profiles FOR ALL
+CREATE POLICY "Users can view own profile"
+  ON public.profiles FOR SELECT
   TO authenticated
   USING (id = auth.uid());
 
--- PLANS (Public viewable, Admin editable)
+CREATE POLICY "Users can update own profile non-privileged fields"
+  ON public.profiles FOR UPDATE
+  TO authenticated
+  USING (id = auth.uid())
+  WITH CHECK (id = auth.uid());
+
+-- ------------------------------------------------------------------------------
+-- B. PLANS (Public viewable, Admin editable)
+-- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Anyone can view plans" ON public.plans;
 CREATE POLICY "Anyone can view plans"
   ON public.plans FOR SELECT
@@ -434,9 +544,12 @@ DROP POLICY IF EXISTS "Admin can manage plans" ON public.plans;
 CREATE POLICY "Admin can manage plans"
   ON public.plans FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
--- TEMPLATES (Published templates are public, Admin manages all)
+-- ------------------------------------------------------------------------------
+-- C. TEMPLATES (Published templates are public, Admin manages all)
+-- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Public can view published templates" ON public.templates;
 CREATE POLICY "Public can view published templates"
   ON public.templates FOR SELECT
@@ -447,61 +560,260 @@ DROP POLICY IF EXISTS "Admin can manage templates" ON public.templates;
 CREATE POLICY "Admin can manage templates"
   ON public.templates FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
--- CUSTOMERS & WEBSITES
+-- ------------------------------------------------------------------------------
+-- D. CUSTOMERS & WEBSITES PROTECTION & RLS
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.protect_customer_fields()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    IF NEW.id IS DISTINCT FROM OLD.id THEN
+      RAISE EXCEPTION 'Customer ID is immutable.';
+    END IF;
+    IF NEW.user_id IS DISTINCT FROM OLD.user_id THEN
+      RAISE EXCEPTION 'User link is immutable by client.';
+    END IF;
+    IF NEW.payment_status IS DISTINCT FROM OLD.payment_status THEN
+      RAISE EXCEPTION 'Payment status cannot be modified by client.';
+    END IF;
+    IF NEW.account_status IS DISTINCT FROM OLD.account_status THEN
+      RAISE EXCEPTION 'Account status cannot be modified by client.';
+    END IF;
+    IF NEW.plan_id IS DISTINCT FROM OLD.plan_id THEN
+      RAISE EXCEPTION 'Plan selection cannot be modified directly by client.';
+    END IF;
+    IF NEW.plan_start_date IS DISTINCT FROM OLD.plan_start_date THEN
+      RAISE EXCEPTION 'Plan start date cannot be modified by client.';
+    END IF;
+    IF NEW.plan_expiry_date IS DISTINCT FROM OLD.plan_expiry_date THEN
+      RAISE EXCEPTION 'Plan expiry date cannot be modified by client.';
+    END IF;
+    IF NEW.client_tier IS DISTINCT FROM OLD.client_tier THEN
+      RAISE EXCEPTION 'Client tier cannot be modified by client.';
+    END IF;
+    IF NEW.subscription_state IS DISTINCT FROM OLD.subscription_state THEN
+      RAISE EXCEPTION 'Subscription state cannot be modified by client.';
+    END IF;
+    IF NEW.website_status IS DISTINCT FROM OLD.website_status THEN
+      RAISE EXCEPTION 'Website status cannot be modified directly by client.';
+    END IF;
+    IF NEW.website_url IS DISTINCT FROM OLD.website_url THEN
+      RAISE EXCEPTION 'Primary website URL cannot be modified by client.';
+    END IF;
+  END IF;
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_protect_customer_fields ON public.customers;
+CREATE TRIGGER trg_protect_customer_fields
+  BEFORE UPDATE ON public.customers
+  FOR EACH ROW EXECUTE FUNCTION public.protect_customer_fields();
+
 DROP POLICY IF EXISTS "Admin can manage all customers" ON public.customers;
+DROP POLICY IF EXISTS "Clients can view and update only their own customer record" ON public.customers;
+DROP POLICY IF EXISTS "Clients can update their own custom content" ON public.customers;
+DROP POLICY IF EXISTS "Clients can view only their own customer record" ON public.customers;
+DROP POLICY IF EXISTS "Clients can update their own editable content" ON public.customers;
+
 CREATE POLICY "Admin can manage all customers"
   ON public.customers FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
-DROP POLICY IF EXISTS "Clients can view and update only their own customer record" ON public.customers;
-CREATE POLICY "Clients can view and update only their own customer record"
+CREATE POLICY "Clients can view only their own customer record"
   ON public.customers FOR SELECT
   TO authenticated
   USING (user_id = auth.uid() OR id = public.get_auth_customer_id());
 
-DROP POLICY IF EXISTS "Clients can update their own custom content" ON public.customers;
-CREATE POLICY "Clients can update their own custom content"
+CREATE POLICY "Clients can update their own editable content"
   ON public.customers FOR UPDATE
   TO authenticated
   USING (user_id = auth.uid() OR id = public.get_auth_customer_id())
   WITH CHECK (user_id = auth.uid() OR id = public.get_auth_customer_id());
 
--- CUSTOMER STORAGE
+-- ------------------------------------------------------------------------------
+-- E. AUTOMATED STORAGE INITIALIZATION & SYNCHRONIZATION
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.initialize_customer_storage()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_base_limit NUMERIC := 5;
+BEGIN
+  IF NEW.plan_id = 'plan-starter' THEN
+    v_base_limit := 5;
+  ELSIF NEW.plan_id = 'plan-pro' THEN
+    v_base_limit := 20;
+  ELSIF NEW.plan_id = 'plan-business' OR NEW.client_tier = 'premium' THEN
+    v_base_limit := 50;
+  END IF;
+
+  INSERT INTO public.customer_storage (
+    customer_id,
+    max_physical_capacity_gb,
+    base_plan_limit_gb,
+    extra_granted_gb,
+    used_bytes,
+    breakdown,
+    updated_at
+  )
+  VALUES (
+    NEW.id,
+    GREATEST(v_base_limit, 15),
+    v_base_limit,
+    0,
+    0,
+    '{"imagesBytes":0,"videosBytes":0,"documentsBytes":0,"websiteFilesBytes":0,"databaseBytes":0}'::jsonb,
+    NOW()
+  )
+  ON CONFLICT (customer_id) DO NOTHING;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_init_customer_storage ON public.customers;
+CREATE TRIGGER trg_init_customer_storage
+  AFTER INSERT ON public.customers
+  FOR EACH ROW EXECUTE FUNCTION public.initialize_customer_storage();
+
+CREATE OR REPLACE FUNCTION public.sync_customer_storage_on_file_change()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_cust_id TEXT;
+  v_total_bytes BIGINT;
+  v_img_bytes BIGINT;
+  v_vid_bytes BIGINT;
+  v_doc_bytes BIGINT;
+  v_code_bytes BIGINT;
+  v_db_bytes BIGINT;
+BEGIN
+  v_cust_id := COALESCE(NEW.customer_id, OLD.customer_id);
+
+  SELECT
+    COALESCE(SUM(size_bytes), 0),
+    COALESCE(SUM(CASE WHEN category = 'image' THEN size_bytes ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN category = 'video' THEN size_bytes ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN category = 'document' THEN size_bytes ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN category = 'code' THEN size_bytes ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN category = 'database' THEN size_bytes ELSE 0 END), 0)
+  INTO v_total_bytes, v_img_bytes, v_vid_bytes, v_doc_bytes, v_code_bytes, v_db_bytes
+  FROM public.customer_files
+  WHERE customer_id = v_cust_id;
+
+  INSERT INTO public.customer_storage (customer_id, used_bytes, breakdown, updated_at)
+  VALUES (
+    v_cust_id,
+    v_total_bytes,
+    jsonb_build_object(
+      'imagesBytes', v_img_bytes,
+      'videosBytes', v_vid_bytes,
+      'documentsBytes', v_doc_bytes,
+      'websiteFilesBytes', v_code_bytes,
+      'databaseBytes', v_db_bytes
+    ),
+    NOW()
+  )
+  ON CONFLICT (customer_id) DO UPDATE
+  SET used_bytes = EXCLUDED.used_bytes,
+      breakdown = EXCLUDED.breakdown,
+      updated_at = NOW();
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_sync_customer_storage ON public.customer_files;
+CREATE TRIGGER trg_sync_customer_storage
+  AFTER INSERT OR UPDATE OR DELETE ON public.customer_files
+  FOR EACH ROW EXECUTE FUNCTION public.sync_customer_storage_on_file_change();
+
+CREATE OR REPLACE FUNCTION public.check_file_upload_quota()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_storage record;
+  v_total_limit_bytes BIGINT;
+BEGIN
+  IF public.is_admin() THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT (base_plan_limit_gb + extra_granted_gb) AS limit_gb, used_bytes
+  INTO v_storage
+  FROM public.customer_storage
+  WHERE customer_id = NEW.customer_id;
+
+  IF FOUND THEN
+    v_total_limit_bytes := (v_storage.limit_gb * 1024 * 1024 * 1024)::BIGINT;
+    IF (v_storage.used_bytes + NEW.size_bytes) > v_total_limit_bytes THEN
+      RAISE EXCEPTION 'Storage quota exceeded. Limit: % GB. Please upgrade your plan or request additional capacity.', v_storage.limit_gb;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_check_file_upload_quota ON public.customer_files;
+CREATE TRIGGER trg_check_file_upload_quota
+  BEFORE INSERT ON public.customer_files
+  FOR EACH ROW EXECUTE FUNCTION public.check_file_upload_quota();
+
 DROP POLICY IF EXISTS "Admin can manage all customer storage" ON public.customer_storage;
+DROP POLICY IF EXISTS "Clients can view own storage" ON public.customer_storage;
+
 CREATE POLICY "Admin can manage all customer storage"
   ON public.customer_storage FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
-DROP POLICY IF EXISTS "Clients can view own storage" ON public.customer_storage;
 CREATE POLICY "Clients can view own storage"
   ON public.customer_storage FOR SELECT
   TO authenticated
   USING (customer_id = public.get_auth_customer_id());
 
--- CUSTOMER FILES
 DROP POLICY IF EXISTS "Admin can manage all customer files" ON public.customer_files;
+DROP POLICY IF EXISTS "Clients can manage own files" ON public.customer_files;
+DROP POLICY IF EXISTS "Clients can view own files" ON public.customer_files;
+DROP POLICY IF EXISTS "Clients can upload own files" ON public.customer_files;
+DROP POLICY IF EXISTS "Clients can delete own files" ON public.customer_files;
+
 CREATE POLICY "Admin can manage all customer files"
   ON public.customer_files FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
-DROP POLICY IF EXISTS "Clients can manage own files" ON public.customer_files;
-CREATE POLICY "Clients can manage own files"
-  ON public.customer_files FOR ALL
+CREATE POLICY "Clients can view own files"
+  ON public.customer_files FOR SELECT
   TO authenticated
-  USING (customer_id = public.get_auth_customer_id())
+  USING (customer_id = public.get_auth_customer_id());
+
+CREATE POLICY "Clients can upload own files"
+  ON public.customer_files FOR INSERT
+  TO authenticated
   WITH CHECK (customer_id = public.get_auth_customer_id());
 
--- STORAGE HISTORY
+CREATE POLICY "Clients can delete own files"
+  ON public.customer_files FOR DELETE
+  TO authenticated
+  USING (customer_id = public.get_auth_customer_id());
+
+-- ------------------------------------------------------------------------------
+-- F. STORAGE HISTORY
+-- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Admin can manage storage history" ON public.storage_history;
 CREATE POLICY "Admin can manage storage history"
   ON public.storage_history FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 DROP POLICY IF EXISTS "Clients can view own storage history" ON public.storage_history;
 CREATE POLICY "Clients can view own storage history"
@@ -509,12 +821,15 @@ CREATE POLICY "Clients can view own storage history"
   TO authenticated
   USING (customer_id = public.get_auth_customer_id());
 
--- ORDERS
+-- ------------------------------------------------------------------------------
+-- G. ORDERS
+-- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Admin can manage all orders" ON public.orders;
 CREATE POLICY "Admin can manage all orders"
   ON public.orders FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 DROP POLICY IF EXISTS "Clients can view own orders" ON public.orders;
 CREATE POLICY "Clients can view own orders"
@@ -522,18 +837,57 @@ CREATE POLICY "Clients can view own orders"
   TO authenticated
   USING (customer_id = public.get_auth_customer_id());
 
+-- Drop vulnerable anonymous checkout policy
 DROP POLICY IF EXISTS "Public can submit checkout orders" ON public.orders;
-CREATE POLICY "Public can submit checkout orders"
-  ON public.orders FOR INSERT
-  TO anon, authenticated
-  WITH CHECK (TRUE);
 
--- PAYMENTS
+-- Authenticated clients can only create pending orders for their own linked account
+DROP POLICY IF EXISTS "Clients can create own orders" ON public.orders;
+CREATE POLICY "Clients can create own orders"
+  ON public.orders FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    customer_id = public.get_auth_customer_id()
+    AND payment_status = 'Pending'
+    AND status IN ('New', 'Pending')
+  );
+
+-- Trigger to protect order fields from client tampering (payment_status, pricing, ownership)
+CREATE OR REPLACE FUNCTION public.protect_order_fields()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    IF NEW.payment_status IS DISTINCT FROM OLD.payment_status AND NEW.payment_status = 'Paid' THEN
+      RAISE EXCEPTION 'Unauthorized order modification: payment_status cannot be set to Paid by client. Payment verification must be server-authoritative.';
+    END IF;
+    IF NEW.customer_id IS DISTINCT FROM OLD.customer_id THEN
+      RAISE EXCEPTION 'Unauthorized order modification: customer_id cannot be altered.';
+    END IF;
+    IF NEW.amount IS DISTINCT FROM OLD.amount THEN
+      RAISE EXCEPTION 'Unauthorized order modification: order amount cannot be altered.';
+    END IF;
+    IF NEW.order_number IS DISTINCT FROM OLD.order_number THEN
+      RAISE EXCEPTION 'Unauthorized order modification: order_number cannot be altered.';
+    END IF;
+  END IF;
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_protect_order_fields ON public.orders;
+CREATE TRIGGER trg_protect_order_fields
+  BEFORE UPDATE ON public.orders
+  FOR EACH ROW EXECUTE FUNCTION public.protect_order_fields();
+
+-- ------------------------------------------------------------------------------
+-- H. PAYMENTS
+-- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Admin can manage all payments" ON public.payments;
 CREATE POLICY "Admin can manage all payments"
   ON public.payments FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 DROP POLICY IF EXISTS "Clients can view own payments" ON public.payments;
 CREATE POLICY "Clients can view own payments"
@@ -541,30 +895,72 @@ CREATE POLICY "Clients can view own payments"
   TO authenticated
   USING (customer_id = public.get_auth_customer_id());
 
--- SUPPORT TICKETS
+-- ------------------------------------------------------------------------------
+-- I. SUPPORT TICKETS & REPLIES
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.protect_ticket_fields()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    IF NEW.id IS DISTINCT FROM OLD.id OR
+       NEW.customer_id IS DISTINCT FROM OLD.customer_id OR
+       NEW.admin_notes IS DISTINCT FROM OLD.admin_notes OR
+       NEW.lead_tracking_status IS DISTINCT FROM OLD.lead_tracking_status THEN
+      RAISE EXCEPTION 'Unauthorized ticket modification: administrative fields cannot be altered by client.';
+    END IF;
+  END IF;
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_protect_ticket_fields ON public.support_tickets;
+CREATE TRIGGER trg_protect_ticket_fields
+  BEFORE UPDATE ON public.support_tickets
+  FOR EACH ROW EXECUTE FUNCTION public.protect_ticket_fields();
+
 DROP POLICY IF EXISTS "Admin can manage all tickets" ON public.support_tickets;
+DROP POLICY IF EXISTS "Clients can view and create own tickets" ON public.support_tickets;
+DROP POLICY IF EXISTS "Clients can view own tickets" ON public.support_tickets;
+DROP POLICY IF EXISTS "Clients can create own tickets" ON public.support_tickets;
+DROP POLICY IF EXISTS "Clients can update own tickets" ON public.support_tickets;
+
 CREATE POLICY "Admin can manage all tickets"
   ON public.support_tickets FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
-DROP POLICY IF EXISTS "Clients can view and create own tickets" ON public.support_tickets;
-CREATE POLICY "Clients can view and create own tickets"
-  ON public.support_tickets FOR ALL
+CREATE POLICY "Clients can view own tickets"
+  ON public.support_tickets FOR SELECT
+  TO authenticated
+  USING (customer_id = public.get_auth_customer_id());
+
+CREATE POLICY "Clients can create own tickets"
+  ON public.support_tickets FOR INSERT
+  TO authenticated
+  WITH CHECK (customer_id = public.get_auth_customer_id());
+
+CREATE POLICY "Clients can update own tickets"
+  ON public.support_tickets FOR UPDATE
   TO authenticated
   USING (customer_id = public.get_auth_customer_id())
   WITH CHECK (customer_id = public.get_auth_customer_id());
 
--- TICKET REPLIES
+-- Ticket Replies
 DROP POLICY IF EXISTS "Admin can manage all ticket replies" ON public.ticket_replies;
+DROP POLICY IF EXISTS "Clients can view and send replies on own tickets" ON public.ticket_replies;
+DROP POLICY IF EXISTS "Clients can view replies on own tickets" ON public.ticket_replies;
+DROP POLICY IF EXISTS "Clients can send replies on own tickets" ON public.ticket_replies;
+
 CREATE POLICY "Admin can manage all ticket replies"
   ON public.ticket_replies FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
-DROP POLICY IF EXISTS "Clients can view and send replies on own tickets" ON public.ticket_replies;
-CREATE POLICY "Clients can view and send replies on own tickets"
-  ON public.ticket_replies FOR ALL
+CREATE POLICY "Clients can view replies on own tickets"
+  ON public.ticket_replies FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -572,9 +968,14 @@ CREATE POLICY "Clients can view and send replies on own tickets"
       WHERE id = ticket_replies.ticket_id
       AND customer_id = public.get_auth_customer_id()
     )
-  )
+  );
+
+CREATE POLICY "Clients can send replies on own tickets"
+  ON public.ticket_replies FOR INSERT
+  TO authenticated
   WITH CHECK (
-    EXISTS (
+    sender = 'Client'
+    AND EXISTS (
       SELECT 1 FROM public.support_tickets
       WHERE id = ticket_replies.ticket_id
       AND customer_id = public.get_auth_customer_id()
@@ -645,6 +1046,473 @@ CREATE POLICY "Admin can update settings"
   ON public.admin_settings FOR ALL
   TO authenticated
   USING (public.is_admin());
+
+-- ==============================================================================
+-- 12.B ATOMIC LEAD TO CLIENT CONVERSION
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.convert_enquiry_to_customer_atomic(
+  p_enquiry_id TEXT,
+  p_auth_user_id UUID,
+  p_client_tier TEXT DEFAULT 'normal',
+  p_plan_id TEXT DEFAULT NULL,
+  p_template_id TEXT DEFAULT NULL,
+  p_admin_name TEXT DEFAULT 'Admin'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_caller_uid UUID;
+  v_enquiry RECORD;
+  v_email TEXT;
+  v_effective_tier TEXT;
+  v_plan_id TEXT;
+  v_template_id TEXT;
+  v_customer RECORD;
+  v_customer_id TEXT;
+  v_is_existing_customer BOOLEAN := FALSE;
+  v_order_id TEXT;
+  v_is_existing_order BOOLEAN := FALSE;
+  v_order_number TEXT;
+  v_payment_id TEXT;
+  v_is_existing_payment BOOLEAN := FALSE;
+  v_txn_id TEXT;
+  v_inv_number TEXT;
+  v_clean_slug TEXT;
+  v_website_url TEXT;
+  v_now_iso TEXT;
+  v_expiry_iso TEXT;
+  v_custom_content JSONB;
+BEGIN
+  -- 1. CALLER AUTHORIZATION: STRICT ADMIN ONLY
+  v_caller_uid := auth.uid();
+  IF NOT public.is_admin() THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'FORBIDDEN',
+      'error', 'Forbidden: Only administrators can convert lead enquiries into customer accounts.'
+    );
+  END IF;
+
+  -- 2. INPUT VALIDATION
+  IF p_enquiry_id IS NULL OR TRIM(p_enquiry_id) = '' THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'INVALID_PARAM',
+      'error', 'Missing or invalid enquiry identifier.'
+    );
+  END IF;
+
+  IF p_auth_user_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'INVALID_PARAM',
+      'error', 'Missing or invalid authentication user identifier.'
+    );
+  END IF;
+
+  -- 3. LOCK & VALIDATE ENQUIRY
+  SELECT * INTO v_enquiry
+  FROM public.enquiries
+  WHERE id = p_enquiry_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'NOT_FOUND',
+      'error', 'Lead enquiry with ID "' || p_enquiry_id || '" was not found.'
+    );
+  END IF;
+
+  IF v_enquiry.status = 'Converted' THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'ALREADY_CONVERTED',
+      'error', 'This lead enquiry has already been converted into a customer account.'
+    );
+  END IF;
+
+  v_email := LOWER(TRIM(COALESCE(v_enquiry.email, '')));
+  IF v_email = '' OR v_email NOT LIKE '%_@__%.__%' THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'INVALID_EMAIL',
+      'error', 'Lead enquiry has an invalid email address ("' || COALESCE(v_enquiry.email, '') || '"). Please correct the email before conversion.'
+    );
+  END IF;
+
+  IF v_email = 'hello.webrunzo@gmail.com' THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'ADMIN_EMAIL_CONFLICT',
+      'error', 'Cannot convert lead using the Master Admin email address. Clients must have distinct email accounts.'
+    );
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE (id = p_auth_user_id OR LOWER(TRIM(email)) = v_email)
+      AND role = 'admin'
+  ) THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'ACCOUNT_ROLE_CONFLICT',
+      'error', 'Email or user account belongs to an administrator and cannot be converted to a client.'
+    );
+  END IF;
+
+  -- 4. RESOLVE TIER, PLAN, TEMPLATE & URL DEFAULTS
+  v_effective_tier := CASE
+    WHEN LOWER(COALESCE(p_client_tier, '')) = 'premium' THEN 'premium'
+    WHEN LOWER(COALESCE(v_enquiry.selected_plan_id, '')) IN ('plan-business', 'business', 'elite') THEN 'premium'
+    WHEN LOWER(COALESCE(v_enquiry.selected_plan_id, '')) LIKE '%business%' THEN 'premium'
+    WHEN LOWER(COALESCE(v_enquiry.selected_plan_id, '')) LIKE '%elite%' THEN 'premium'
+    ELSE 'normal'
+  END;
+
+  v_plan_id := COALESCE(
+    NULLIF(TRIM(p_plan_id), ''),
+    NULLIF(TRIM(v_enquiry.selected_plan_id), ''),
+    CASE WHEN v_effective_tier = 'premium' THEN 'plan-business' ELSE 'plan-pro' END
+  );
+
+  v_template_id := COALESCE(
+    NULLIF(TRIM(p_template_id), ''),
+    NULLIF(TRIM(v_enquiry.selected_template_id), ''),
+    'tpl-biz-1'
+  );
+
+  v_clean_slug := REGEXP_REPLACE(LOWER(COALESCE(v_enquiry.business, 'mybrand')), '[^a-z0-9]', '', 'g');
+  IF v_clean_slug = '' THEN
+    v_clean_slug := 'client';
+  END IF;
+  v_website_url := 'https://' || v_clean_slug || '.webrunzo.app';
+
+  v_now_iso := CURRENT_DATE::text;
+  v_expiry_iso := (CURRENT_DATE + INTERVAL '1 year')::date::text;
+
+  -- 5. ATOMIC MUTATION A: CUSTOMER CREATION OR SAFE REUSE (IDEMPOTENCY)
+  SELECT * INTO v_customer
+  FROM public.customers
+  WHERE LOWER(TRIM(email)) = v_email
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    v_customer_id := v_customer.id;
+    v_is_existing_customer := TRUE;
+
+    UPDATE public.customers
+    SET user_id = p_auth_user_id,
+        client_tier = v_effective_tier,
+        account_status = 'Active',
+        plan_id = COALESCE(public.customers.plan_id, v_plan_id),
+        template_id = COALESCE(public.customers.template_id, v_template_id),
+        updated_at = NOW()
+    WHERE id = v_customer_id
+    RETURNING * INTO v_customer;
+  ELSE
+    v_customer_id := 'cust-' || SUBSTRING(REPLACE(gen_random_uuid()::text, '-', '') FROM 1 FOR 12);
+    v_is_existing_customer := FALSE;
+
+    v_custom_content := jsonb_build_object(
+      'businessName', COALESCE(NULLIF(TRIM(v_enquiry.business), ''), 'My Business'),
+      'tagline', 'Professional High-Standard Business Solutions',
+      'heroHeadline', 'Welcome to ' || COALESCE(NULLIF(TRIM(v_enquiry.business), ''), 'Our Business'),
+      'heroSubhead', 'We provide premier services tailored to your exact industry requirements.',
+      'primaryColor', CASE WHEN v_effective_tier = 'premium' THEN '#6366f1' ELSE '#2563eb' END,
+      'logoText', UPPER(COALESCE(NULLIF(TRIM(v_enquiry.business), ''), 'BUSINESS')),
+      'contactEmail', v_email,
+      'contactPhone', COALESCE(NULLIF(TRIM(v_enquiry.phone), ''), '+1 (555) 000-0000'),
+      'address', '100 Business Center Ave, Suite 100',
+      'aboutText', COALESCE(NULLIF(TRIM(v_enquiry.business), ''), 'Our company') || ' provides turnkey services committed to quality and customer satisfaction.',
+      'servicesList', jsonb_build_array(
+        jsonb_build_object('title', 'Core Client Services', 'desc', 'Customized professional solutions delivered on time.'),
+        jsonb_build_object('title', 'Customer Care & Support', 'desc', 'Direct access to your dedicated account manager and team.')
+      ),
+      'socialLinks', jsonb_build_object('instagram', 'https://instagram.com', 'facebook', 'https://facebook.com'),
+      'onboarding', jsonb_build_object('status', 'Not Started')
+    );
+
+    INSERT INTO public.customers (
+      id,
+      user_id,
+      name,
+      business_name,
+      email,
+      phone,
+      client_tier,
+      plan_id,
+      template_id,
+      payment_status,
+      plan_start_date,
+      plan_expiry_date,
+      website_url,
+      website_status,
+      account_status,
+      notes,
+      seo_score,
+      speed_score,
+      uptime_percent,
+      custom_content,
+      created_at,
+      updated_at
+    ) VALUES (
+      v_customer_id,
+      p_auth_user_id,
+      COALESCE(NULLIF(TRIM(v_enquiry.name), ''), 'New Client'),
+      COALESCE(NULLIF(TRIM(v_enquiry.business), ''), 'My Business'),
+      v_email,
+      COALESCE(NULLIF(TRIM(v_enquiry.phone), ''), '+1 (555) 000-0000'),
+      v_effective_tier,
+      v_plan_id,
+      v_template_id,
+      'Paid',
+      CURRENT_DATE,
+      (CURRENT_DATE + INTERVAL '1 year')::date,
+      v_website_url,
+      'In Progress',
+      'Active',
+      'Converted from Website Enquiry on ' || v_now_iso || '. Notes: "' || COALESCE(v_enquiry.message, '') || '"',
+      CASE WHEN v_effective_tier = 'premium' THEN 98 ELSE 92 END,
+      CASE WHEN v_effective_tier = 'premium' THEN 99 ELSE 94 END,
+      CASE WHEN v_effective_tier = 'premium' THEN 99.98 ELSE 99.9 END,
+      v_custom_content,
+      NOW(),
+      NOW()
+    )
+    RETURNING * INTO v_customer;
+  END IF;
+
+  -- 6. ATOMIC MUTATION B: CUSTOMER STORAGE ALLOCATION
+  INSERT INTO public.customer_storage (
+    customer_id,
+    max_physical_capacity_gb,
+    base_plan_limit_gb,
+    extra_granted_gb,
+    used_bytes,
+    breakdown,
+    updated_at
+  ) VALUES (
+    v_customer_id,
+    CASE WHEN v_effective_tier = 'premium' THEN 50 ELSE 20 END,
+    CASE WHEN v_effective_tier = 'premium' THEN 50 ELSE 20 END,
+    0,
+    0,
+    '{"imagesBytes":0,"videosBytes":0,"documentsBytes":0,"websiteFilesBytes":0,"databaseBytes":0}'::jsonb,
+    NOW()
+  )
+  ON CONFLICT (customer_id) DO UPDATE
+  SET max_physical_capacity_gb = GREATEST(public.customer_storage.max_physical_capacity_gb, EXCLUDED.max_physical_capacity_gb),
+      base_plan_limit_gb = GREATEST(public.customer_storage.base_plan_limit_gb, EXCLUDED.base_plan_limit_gb),
+      updated_at = NOW();
+
+  -- 7. ATOMIC MUTATION C: INITIAL ORDER CREATION OR SAFE REUSE
+  SELECT id INTO v_order_id
+  FROM public.orders
+  WHERE customer_id = v_customer_id
+  LIMIT 1;
+
+  IF FOUND THEN
+    v_is_existing_order := TRUE;
+  ELSE
+    v_is_existing_order := FALSE;
+    v_order_id := 'ord-' || SUBSTRING(REPLACE(gen_random_uuid()::text, '-', '') FROM 1 FOR 12);
+    v_order_number := 'ORD-' || LPAD(FLOOR(RANDOM() * 9000 + 1000)::text, 4, '0');
+
+    WHILE EXISTS (SELECT 1 FROM public.orders WHERE order_number = v_order_number) LOOP
+      v_order_number := 'ORD-' || LPAD(FLOOR(RANDOM() * 9000 + 1000)::text, 4, '0');
+    END LOOP;
+
+    INSERT INTO public.orders (
+      id,
+      order_number,
+      customer_id,
+      client_name,
+      business_name,
+      email,
+      phone,
+      plan_id,
+      template_id,
+      amount,
+      status,
+      payment_status,
+      date,
+      delivery_due_date,
+      requirements,
+      client_tier,
+      milestones,
+      created_at,
+      updated_at
+    ) VALUES (
+      v_order_id,
+      v_order_number,
+      v_customer_id,
+      v_customer.name,
+      v_customer.business_name,
+      v_email,
+      v_customer.phone,
+      v_plan_id,
+      v_template_id,
+      CASE WHEN v_effective_tier = 'premium' THEN 899 ELSE 499 END,
+      'In Progress',
+      'Paid',
+      NOW(),
+      (CURRENT_DATE + INTERVAL '3 days')::date,
+      'Turnkey build for ' || v_customer.business_name || ' on ' || v_template_id || '. Converted from enquiry ' || p_enquiry_id || '.',
+      v_effective_tier,
+      jsonb_build_array(
+        jsonb_build_object('title', 'Order Enrolled & Payment Verified', 'completed', true, 'date', v_now_iso),
+        jsonb_build_object('title', 'Template Setup & Initial Build', 'completed', true, 'date', v_now_iso),
+        jsonb_build_object('title', 'Live Deployment & Domain Connection', 'completed', false, 'date', v_now_iso)
+      ),
+      NOW(),
+      NOW()
+    );
+  END IF;
+
+  -- 8. ATOMIC MUTATION D: INITIAL PAYMENT RECORD OR SAFE REUSE
+  SELECT id INTO v_payment_id
+  FROM public.payments
+  WHERE customer_id = v_customer_id
+  LIMIT 1;
+
+  IF FOUND THEN
+    v_is_existing_payment := TRUE;
+  ELSE
+    v_is_existing_payment := FALSE;
+    v_payment_id := 'pay-' || SUBSTRING(REPLACE(gen_random_uuid()::text, '-', '') FROM 1 FOR 12);
+    v_txn_id := 'TXN-' || LPAD(FLOOR(RANDOM() * 900000 + 100000)::text, 6, '0');
+    v_inv_number := 'INV-2026-' || LPAD(FLOOR(RANDOM() * 900 + 100)::text, 3, '0');
+
+    WHILE EXISTS (SELECT 1 FROM public.payments WHERE transaction_id = v_txn_id) LOOP
+      v_txn_id := 'TXN-' || LPAD(FLOOR(RANDOM() * 900000 + 100000)::text, 6, '0');
+    END LOOP;
+
+    WHILE EXISTS (SELECT 1 FROM public.payments WHERE invoice_number = v_inv_number) LOOP
+      v_inv_number := 'INV-2026-' || LPAD(FLOOR(RANDOM() * 900 + 100)::text, 3, '0');
+    END LOOP;
+
+    INSERT INTO public.payments (
+      id,
+      transaction_id,
+      invoice_number,
+      customer_id,
+      customer_name,
+      business_name,
+      amount,
+      plan_name,
+      date,
+      status,
+      method,
+      created_at
+    ) VALUES (
+      v_payment_id,
+      v_txn_id,
+      v_inv_number,
+      v_customer_id,
+      v_customer.name,
+      v_customer.business_name,
+      CASE WHEN v_effective_tier = 'premium' THEN 899 ELSE 499 END,
+      CASE WHEN v_effective_tier = 'premium' THEN 'Business Elite (Annual)' ELSE 'Pro Growth (Annual)' END,
+      NOW(),
+      'Paid',
+      'Electronic Settlement',
+      NOW()
+    );
+  END IF;
+
+  -- 9. ATOMIC MUTATION E: PROFILE LINKAGE
+  INSERT INTO public.profiles (
+    id,
+    email,
+    full_name,
+    role,
+    client_tier,
+    customer_id,
+    business_name,
+    updated_at
+  ) VALUES (
+    p_auth_user_id,
+    v_email,
+    v_customer.name,
+    'client',
+    v_effective_tier,
+    v_customer_id,
+    v_customer.business_name,
+    NOW()
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET customer_id = EXCLUDED.customer_id,
+      client_tier = EXCLUDED.client_tier,
+      role = CASE WHEN public.profiles.role = 'admin' THEN 'admin' ELSE 'client' END,
+      business_name = COALESCE(EXCLUDED.business_name, public.profiles.business_name),
+      full_name = COALESCE(public.profiles.full_name, EXCLUDED.full_name),
+      updated_at = NOW();
+
+  -- 10. ATOMIC MUTATION F: MARK ENQUIRY CONVERTED
+  UPDATE public.enquiries
+  SET status = 'Converted',
+      admin_notes = 'Converted to Customer: ' || v_customer.business_name || ' (ID: ' || v_customer_id || ') by ' || COALESCE(p_admin_name, 'Admin') || ' on ' || v_now_iso
+  WHERE id = p_enquiry_id;
+
+  -- 11. RETURN STRUCTURED DATA
+  RETURN jsonb_build_object(
+    'success', true,
+    'code', 'CONVERTED',
+    'customer_id', v_customer_id,
+    'order_id', v_order_id,
+    'payment_id', v_payment_id,
+    'is_existing_customer', v_is_existing_customer,
+    'is_existing_order', v_is_existing_order,
+    'is_existing_payment', v_is_existing_payment,
+    'client_tier', v_effective_tier,
+    'plan_id', v_plan_id,
+    'template_id', v_template_id,
+    'account_status', v_customer.account_status,
+    'customer', jsonb_build_object(
+      'id', v_customer.id,
+      'user_id', v_customer.user_id,
+      'name', v_customer.name,
+      'business_name', v_customer.business_name,
+      'email', v_customer.email,
+      'phone', v_customer.phone,
+      'client_tier', v_customer.client_tier,
+      'plan_id', v_customer.plan_id,
+      'template_id', v_customer.template_id,
+      'payment_status', v_customer.payment_status,
+      'plan_start_date', v_customer.plan_start_date,
+      'plan_expiry_date', v_customer.plan_expiry_date,
+      'website_url', v_customer.website_url,
+      'website_status', v_customer.website_status,
+      'account_status', v_customer.account_status,
+      'notes', v_customer.notes,
+      'seo_score', v_customer.seo_score,
+      'speed_score', v_customer.speed_score,
+      'uptime_percent', v_customer.uptime_percent,
+      'custom_content', v_customer.custom_content,
+      'created_at', v_customer.created_at,
+      'updated_at', v_customer.updated_at
+    )
+  );
+
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'TRANSACTION_FAILED',
+      'error', 'Database conversion transaction failed: ' || SQLERRM,
+      'detail', SQLSTATE
+    );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.convert_enquiry_to_customer_atomic(TEXT, UUID, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.convert_enquiry_to_customer_atomic(TEXT, UUID, TEXT, TEXT, TEXT, TEXT) FROM anon;
+GRANT EXECUTE ON FUNCTION public.convert_enquiry_to_customer_atomic(TEXT, UUID, TEXT, TEXT, TEXT, TEXT) TO authenticated, service_role;
 
 -- ==============================================================================
 -- 13. SEED DEFAULT SETTINGS & PLANS

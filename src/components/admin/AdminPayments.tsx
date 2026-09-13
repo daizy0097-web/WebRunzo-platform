@@ -28,8 +28,8 @@ export const AdminPayments: React.FC = () => {
   const [customerId, setCustomerId] = useState(customers[0]?.id || '');
   const [amount, setAmount] = useState(24999);
   const [status, setStatus] = useState<PaymentStatus>('Paid');
-  const [method, setMethod] = useState('Stripe (Card)');
-  const [reference, setReference] = useState(`ch_test_${Math.random().toString(36).substring(2, 9)}`);
+  const [method, setMethod] = useState('Razorpay (Credit / Debit Card)');
+  const [reference, setReference] = useState(`pay_rzp_${Math.random().toString(36).substring(2, 9)}`);
 
   const filteredPayments = useMemo(() => {
     return payments.filter((p) => {

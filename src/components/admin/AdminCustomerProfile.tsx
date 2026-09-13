@@ -31,7 +31,10 @@ import {
   ShieldAlert,
   Wrench,
   Lock,
-  RefreshCw
+  RefreshCw,
+  ClipboardList,
+  Palette,
+  Check
 } from 'lucide-react';
 
 export const AdminCustomerProfile: React.FC = () => {
@@ -104,6 +107,11 @@ export const AdminCustomerProfile: React.FC = () => {
   const [siteContactPhone, setSiteContactPhone] = useState(customer.customContent?.contactPhone || '');
   const [siteAddress, setSiteAddress] = useState(customer.customContent?.address || '');
 
+  // Website Onboarding / Intake states
+  const rawOnboarding = customer.customContent?.onboarding;
+  const [onboardingStatus, setOnboardingStatus] = useState<string>(rawOnboarding?.status || 'Not Started');
+  const [adminOnboardingNotes, setAdminOnboardingNotes] = useState<string>(rawOnboarding?.adminNotes || '');
+
   const handleToggleWebsiteControl = () => {
     toggleWebsiteStatus(
       customer.id,
@@ -113,6 +121,22 @@ export const AdminCustomerProfile: React.FC = () => {
   };
 
   const handleSaveAll = () => {
+    const currentOnboarding = customer.customContent?.onboarding;
+    const updatedOnboarding = currentOnboarding
+      ? {
+          ...currentOnboarding,
+          status: onboardingStatus as any,
+          adminNotes: adminOnboardingNotes,
+          updatedAt: new Date().toISOString(),
+        }
+      : onboardingStatus !== 'Not Started'
+      ? {
+          status: onboardingStatus as any,
+          adminNotes: adminOnboardingNotes,
+          updatedAt: new Date().toISOString(),
+        }
+      : undefined;
+
     updateCustomer(customer.id, {
       businessName,
       name,
@@ -134,11 +158,13 @@ export const AdminCustomerProfile: React.FC = () => {
       speedScore: Number(speedScore),
       notes,
       customContent: {
+        ...(customer.customContent || {}),
         headline: siteHeadline,
         tagline: siteTagline,
         contactEmail: siteContactEmail,
         contactPhone: siteContactPhone,
         address: siteAddress,
+        ...(updatedOnboarding ? { onboarding: updatedOnboarding } : {}),
       },
     });
     addToast('success', 'Profile & Website Settings Saved', `Changes for ${businessName} saved successfully.`);
@@ -599,6 +625,402 @@ export const AdminCustomerProfile: React.FC = () => {
 
         </div>
 
+      </div>
+
+      {/* Full-Width Section: Website Onboarding & Intake Specifications */}
+      <div className="bg-slate-900/90 p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+          <div className="flex items-start gap-3">
+            <div className={`p-3 rounded-2xl shrink-0 ${
+              onboardingStatus === 'Submitted'
+                ? 'bg-emerald-500/20 text-emerald-400'
+                : onboardingStatus === 'In Progress'
+                ? 'bg-sky-500/20 text-sky-400'
+                : 'bg-slate-800 text-slate-400'
+            }`}>
+              <ClipboardList className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-lg font-extrabold text-white tracking-tight">
+                  Website Intake & Onboarding Specifications
+                </h2>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border uppercase tracking-wider ${
+                  onboardingStatus === 'Submitted'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : onboardingStatus === 'In Progress'
+                    ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  {onboardingStatus}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Review submitted business profile, branding assets, architecture choices, and custom feature requests.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-400 font-semibold">Status Override:</span>
+            {(['Not Started', 'In Progress', 'Submitted'] as const).map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setOnboardingStatus(st)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                  onboardingStatus === st
+                    ? st === 'Submitted'
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-600/30'
+                      : st === 'In Progress'
+                      ? 'bg-sky-600 text-white border-sky-500 shadow-sm shadow-sky-600/30'
+                      : 'bg-slate-700 text-white border-slate-600'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                }`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Timestamps */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80 text-slate-400">
+          <div>
+            <span className="font-semibold text-slate-500 block text-[10px] uppercase">Started At:</span>
+            <span className="text-slate-300 font-medium">
+              {rawOnboarding?.startedAt ? new Date(rawOnboarding.startedAt).toLocaleString() : 'Not recorded'}
+            </span>
+          </div>
+          <div>
+            <span className="font-semibold text-slate-500 block text-[10px] uppercase">Submitted At:</span>
+            <span className="text-emerald-400 font-medium">
+              {rawOnboarding?.submittedAt ? new Date(rawOnboarding.submittedAt).toLocaleString() : 'Not submitted yet'}
+            </span>
+          </div>
+          <div>
+            <span className="font-semibold text-slate-500 block text-[10px] uppercase">Last Updated:</span>
+            <span className="text-slate-300 font-medium">
+              {rawOnboarding?.updatedAt ? new Date(rawOnboarding.updatedAt).toLocaleString() : 'No updates'}
+            </span>
+          </div>
+        </div>
+
+        {/* Specifications Details Grid */}
+        {rawOnboarding ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+            
+            {/* 1. Business Profile & Contact Details */}
+            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <Building2 className="w-4 h-4 text-emerald-400" />
+                <span>1. Business Details</span>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <span className="text-slate-500 text-[11px] block">Business / Company Name</span>
+                  <span className="text-white font-semibold text-sm">
+                    {rawOnboarding.businessDetails?.businessName || customer.businessName || '—'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">Industry Category</span>
+                    <span className="text-slate-300 font-medium">
+                      {rawOnboarding.businessDetails?.industryCategory || '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">Preferred Domain</span>
+                    <span className="text-slate-300 font-mono text-[11px]">
+                      {rawOnboarding.businessDetails?.customDomain || customer.customDomain || '—'}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-[11px] block">Business Description</span>
+                  <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60 mt-1">
+                    {rawOnboarding.businessDetails?.businessDescription || 'No description provided.'}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">Contact Email</span>
+                    <span className="text-slate-300">{rawOnboarding.businessDetails?.contactEmail || customer.email || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">Contact Phone</span>
+                    <span className="text-slate-300">{rawOnboarding.businessDetails?.contactPhone || customer.phone || '—'}</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-[11px] block">Physical Address / Service Area</span>
+                  <span className="text-slate-300">{rawOnboarding.businessDetails?.address || '—'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Visual Style & Branding */}
+            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <Palette className="w-4 h-4 text-indigo-400" />
+                <span>2. Brand & Visual Identity</span>
+              </div>
+              <div className="space-y-3">
+                {/* Logo */}
+                <div>
+                  <span className="text-slate-500 text-[11px] block mb-1">Brand Logo Asset</span>
+                  {rawOnboarding.branding?.logoUrl ? (
+                    <div className="flex items-center gap-3 bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
+                      <img
+                        src={rawOnboarding.branding.logoUrl}
+                        alt="Logo Preview"
+                        className="w-12 h-12 object-contain rounded-lg bg-slate-950 border border-slate-800 p-1"
+                      />
+                      <div className="overflow-hidden">
+                        <span className="text-[11px] text-slate-300 font-mono truncate block">
+                          {rawOnboarding.branding.logoUrl}
+                        </span>
+                        <a
+                          href={rawOnboarding.branding.logoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-indigo-400 hover:underline inline-flex items-center gap-1 mt-0.5"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Open full asset
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-slate-400 italic bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60">
+                      {rawOnboarding.branding?.logoText
+                        ? `Wordmark / Text Logo requested: "${rawOnboarding.branding.logoText}"`
+                        : 'No logo uploaded (WebRunzo to generate clean typography wordmark).'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Color Palette */}
+                <div>
+                  <span className="text-slate-500 text-[11px] block mb-1.5">Brand Color Palette</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2.5 bg-slate-900/70 p-2 rounded-xl border border-slate-800">
+                      <div
+                        className="w-6 h-6 rounded-lg border border-white/20 shadow-sm shrink-0"
+                        style={{ backgroundColor: rawOnboarding.branding?.primaryColor || '#4f46e5' }}
+                      />
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Primary Accent</span>
+                        <span className="font-mono text-slate-200 font-semibold">
+                          {rawOnboarding.branding?.primaryColor || '#4f46e5'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 bg-slate-900/70 p-2 rounded-xl border border-slate-800">
+                      <div
+                        className="w-6 h-6 rounded-lg border border-white/20 shadow-sm shrink-0"
+                        style={{ backgroundColor: rawOnboarding.branding?.secondaryColor || '#0ea5e9' }}
+                      />
+                      <div>
+                        <span className="text-[10px] text-slate-500 block">Secondary Accent</span>
+                        <span className="font-mono text-slate-200 font-semibold">
+                          {rawOnboarding.branding?.secondaryColor || '#0ea5e9'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preferred Styles */}
+                <div>
+                  <span className="text-slate-500 text-[11px] block mb-1">Aesthetic & Visual Style</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rawOnboarding.branding?.preferredStyles && rawOnboarding.branding.preferredStyles.length > 0 ? (
+                      rawOnboarding.branding.preferredStyles.map((style) => (
+                        <span
+                          key={style}
+                          className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-lg"
+                        >
+                          {style}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-500 italic">No specific aesthetic selected.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Website Specifications & Sections */}
+            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <Layout className="w-4 h-4 text-sky-400" />
+                <span>3. Content & Page Layout Specifications</span>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <span className="text-slate-500 text-[11px] block mb-1">Required Page Sections</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rawOnboarding.specifications?.requiredSections && rawOnboarding.specifications.requiredSections.length > 0 ? (
+                      rawOnboarding.specifications.requiredSections.map((sec) => (
+                        <span
+                          key={sec}
+                          className="bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1"
+                        >
+                          <Check className="w-3 h-3 text-emerald-400" /> {sec}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-500 italic">Standard turnkey sections (Hero, About, Services, Contact).</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">Hero Headline Request</span>
+                    <span className="text-slate-200 font-semibold">{rawOnboarding.specifications?.heroHeadline || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">Hero Tagline / Subtitle</span>
+                    <span className="text-slate-300">{rawOnboarding.specifications?.heroTagline || '—'}</span>
+                  </div>
+                </div>
+
+                {/* About story */}
+                {rawOnboarding.specifications?.aboutStory && (
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">About Us / Founder Story</span>
+                    <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60 mt-1">
+                      {rawOnboarding.specifications.aboutStory}
+                    </p>
+                  </div>
+                )}
+
+                {/* Services */}
+                {rawOnboarding.specifications?.services && rawOnboarding.specifications.services.length > 0 && (
+                  <div>
+                    <span className="text-slate-500 text-[11px] block mb-1">Provided Services / Key Offerings</span>
+                    <div className="space-y-1.5">
+                      {rawOnboarding.specifications.services.map((srv, idx) => (
+                        <div key={idx} className="bg-slate-900/70 p-2 rounded-xl border border-slate-800 text-[11px]">
+                          <span className="font-bold text-white">{srv.name}</span>
+                          {srv.description && <p className="text-slate-400 mt-0.5">{srv.description}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Social media */}
+                {rawOnboarding.specifications?.socialLinks && Object.values(rawOnboarding.specifications.socialLinks).some(Boolean) && (
+                  <div>
+                    <span className="text-slate-500 text-[11px] block mb-1">Social Channels</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      {rawOnboarding.specifications.socialLinks.instagram && (
+                        <span className="text-slate-300 font-mono text-[10px] bg-slate-900/70 px-2 py-1 rounded border border-slate-800 truncate">
+                          IG: {rawOnboarding.specifications.socialLinks.instagram}
+                        </span>
+                      )}
+                      {rawOnboarding.specifications.socialLinks.facebook && (
+                        <span className="text-slate-300 font-mono text-[10px] bg-slate-900/70 px-2 py-1 rounded border border-slate-800 truncate">
+                          FB: {rawOnboarding.specifications.socialLinks.facebook}
+                        </span>
+                      )}
+                      {rawOnboarding.specifications.socialLinks.linkedin && (
+                        <span className="text-slate-300 font-mono text-[10px] bg-slate-900/70 px-2 py-1 rounded border border-slate-800 truncate">
+                          LI: {rawOnboarding.specifications.socialLinks.linkedin}
+                        </span>
+                      )}
+                      {rawOnboarding.specifications.socialLinks.whatsapp && (
+                        <span className="text-slate-300 font-mono text-[10px] bg-slate-900/70 px-2 py-1 rounded border border-slate-800 truncate">
+                          WA: {rawOnboarding.specifications.socialLinks.whatsapp}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 4. Project Scope, Special Features & Notes */}
+            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-800 pb-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>4. Special Features & Client Notes</span>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <span className="text-slate-500 text-[11px] block mb-1">Special Features Requested</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rawOnboarding.requirements?.specialFeatures && rawOnboarding.requirements.specialFeatures.length > 0 ? (
+                      rawOnboarding.requirements.specialFeatures.map((feat) => (
+                        <span
+                          key={feat}
+                          className="bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-lg"
+                        >
+                          {feat}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-500 italic">None specified.</span>
+                    )}
+                  </div>
+                </div>
+
+                {rawOnboarding.requirements?.specialFeaturesNotes && (
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">Feature Implementation Notes</span>
+                    <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60 mt-1">
+                      {rawOnboarding.requirements.specialFeaturesNotes}
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <span className="text-slate-500 text-[11px] block">Client Inspiration & General Notes</span>
+                  <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60 mt-1">
+                    {rawOnboarding.requirements?.notes || rawOnboarding.notes || 'No extra notes provided.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        ) : (
+          <div className="bg-slate-950 p-8 rounded-2xl border border-slate-800 text-center space-y-3">
+            <ClipboardList className="w-10 h-10 text-slate-600 mx-auto" />
+            <div className="font-bold text-white text-sm">No Intake Requirements Submitted Yet</div>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              This client has not yet filled out their onboarding questionnaire in their portal. You can prompt them or update the status manually once discussed.
+            </p>
+          </div>
+        )}
+
+        {/* Admin Internal Onboarding Notes Box */}
+        <div className="pt-4 border-t border-slate-800 space-y-2">
+          <label className="block text-slate-300 font-bold text-xs">
+            WebRunzo Engineering & Webmaster Notes on this Intake
+          </label>
+          <textarea
+            rows={3}
+            value={adminOnboardingNotes}
+            onChange={(e) => setAdminOnboardingNotes(e.target.value)}
+            placeholder="Internal notes regarding template customization, branding asset review, or milestone progress for this client..."
+            className="w-full p-3 rounded-xl border border-slate-800 bg-slate-950 text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none font-sans"
+          />
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleSaveAll}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/20"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save Intake & Profile Changes</span>
+            </button>
+          </div>
+        </div>
       </div>
 
     </div>

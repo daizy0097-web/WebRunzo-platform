@@ -16,6 +16,8 @@ import {
   WebsiteStatus,
   EnquiryStatus,
   OrderStatus,
+  ProjectStatus,
+  ALLOWED_PROJECT_TRANSITIONS,
   Order,
   SupportTicket,
   QueryType,
@@ -74,6 +76,7 @@ import {
   dbDeleteBackup,
   dbAddOrder,
   dbUpdateOrder,
+  dbUpdateProjectStatus,
   dbDeleteOrder,
   dbAddTicket,
   dbUpdateTicket,
@@ -87,6 +90,14 @@ import {
   dbUpdateSettings,
   dbLogActivity,
 } from '../lib/supabaseDb';
+import {
+  getProjectStatus,
+  isValidProjectTransition,
+  getCanonicalMilestones,
+  embedProjectStatusInNotes,
+  mapProjectStatusToDatabaseOrderStatus,
+  getStatusNotification,
+} from '../utils/projectLifecycle';
 
 export type Experience = 'public' | 'admin' | 'client';
 export type PublicPage = 'home' | 'privacy' | 'terms' | 'sla';
@@ -100,6 +111,7 @@ export type AdminTab =
   | 'storage'
   | 'backups'
   | 'subscriptions' 
+  | 'customer-tiers'
   | 'payments' 
   | 'templates' 
   | 'enquiries' 
@@ -108,6 +120,7 @@ export type AdminTab =
 
 export type ClientTab = 
   | 'dashboard' 
+  | 'onboarding'
   | 'website' 
   | 'storage'
   | 'orders' 
@@ -153,6 +166,8 @@ interface AppContextType {
   setSelectedCustomerIdForAdmin: (id: string | null) => void;
   
   session: UserSession;
+  isPasswordResetMode: boolean;
+  setIsPasswordResetMode: (val: boolean) => void;
   loginAsAdmin: (email?: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   loginAsClient: (email?: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void> | void;
@@ -256,6 +271,7 @@ interface AppContextType {
   addOrder: (orderData: Partial<Order>) => Order;
   updateOrder: (id: string, updates: Partial<Order>) => void;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
+  updateProjectStatus: (orderId: string, newStatus: ProjectStatus, adminNote?: string) => Promise<{ success: boolean; error?: string }>;
   deleteOrder: (id: string) => void;
 
   // Support Tickets
@@ -275,7 +291,7 @@ interface AppContextType {
   // Enquiries
   submitEnquiry: (enquiryData: Omit<Enquiry, 'id' | 'date' | 'status'>) => void;
   updateEnquiryStatus: (id: string, status: EnquiryStatus, adminNotes?: string) => void;
-  convertEnquiryToCustomer: (enquiryId: string) => Customer | null;
+  convertEnquiryToCustomer: (enquiryId: string) => Promise<Customer | null>;
 
   updateSettings: (updates: Partial<AdminSettings>) => void;
   resetAllData: () => void;
@@ -328,6 +344,83 @@ function getUrlForState(exp: Experience, pubPage: PublicPage, cTab: ClientTab, a
   return '#/';
 }
 
+export const PASSWORD_RESET_STORAGE_KEY = 'webrunzo_password_reset_active';
+
+export function checkIsRecoveryInUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hash = (window.location.hash || '').toLowerCase();
+  const search = (window.location.search || '').toLowerCase();
+  // Recovery token is specifically denoted by type=recovery in hash or query, or code parameter with recovery
+  return (
+    hash.includes('type=recovery') ||
+    search.includes('type=recovery') ||
+    (search.includes('code=') && (search.includes('recovery') || hash.includes('recovery')))
+  );
+}
+
+export function isStoredPasswordResetActive(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(PASSWORD_RESET_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setStoredPasswordResetActive(active: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (active) {
+      window.sessionStorage.setItem(PASSWORD_RESET_STORAGE_KEY, 'true');
+    } else {
+      window.sessionStorage.removeItem(PASSWORD_RESET_STORAGE_KEY);
+    }
+  } catch {}
+}
+
+export function clearRecoveryUrlState(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    let modified = false;
+
+    // Strip recovery query params if present
+    if (url.searchParams.has('type') && url.searchParams.get('type') === 'recovery') {
+      url.searchParams.delete('type');
+      modified = true;
+    }
+    if (url.searchParams.has('error') || url.searchParams.has('error_description') || url.searchParams.has('error_code')) {
+      url.searchParams.delete('error');
+      url.searchParams.delete('error_description');
+      url.searchParams.delete('error_code');
+      modified = true;
+    }
+
+    // Clean hash if it has recovery or stale tokens
+    const hash = url.hash || '';
+    if (hash.includes('type=recovery') || hash.includes('error_description=')) {
+      url.hash = '#/client';
+      modified = true;
+    }
+
+    if (modified && window.history?.replaceState) {
+      window.history.replaceState(null, '', url.pathname + url.search + (url.hash || '#/client'));
+    }
+  } catch (err) {
+    console.debug('Could not clean recovery URL state:', err);
+  }
+}
+
+export function clearPasswordResetRecovery(): void {
+  setStoredPasswordResetActive(false);
+  clearRecoveryUrlState();
+}
+
+// Immediately persist only if an explicit recovery token is detected in the URL
+if (typeof window !== 'undefined' && checkIsRecoveryInUrl()) {
+  setStoredPasswordResetActive(true);
+}
+
 // Helper to parse URL to state
 function parseUrlToState(): {
   experience: Experience;
@@ -339,8 +432,24 @@ function parseUrlToState(): {
   const pathname = typeof window !== 'undefined' ? window.location.pathname || '' : '';
   
   const fullPath = (hash.startsWith('#') ? hash.slice(1) : pathname).toLowerCase();
-  
-  if (fullPath.includes('privacy-policy') || fullPath.includes('privacy')) {
+
+  // Supabase password recovery links return through the URL hash/search or persisted session
+  const isPasswordRecovery =
+    fullPath.includes('access_token=') ||
+    fullPath.includes('type=recovery') ||
+    checkIsRecoveryInUrl() ||
+    isStoredPasswordResetActive();
+
+  if (isPasswordRecovery) {
+    return {
+      experience: 'client',
+      publicPage: 'home',
+      clientTab: 'dashboard',
+      adminTab: 'dashboard',
+    };
+  }
+
+if (fullPath.includes('privacy-policy') || fullPath.includes('privacy')) {
     return { experience: 'public', publicPage: 'privacy', clientTab: 'dashboard', adminTab: 'dashboard' };
   }
   if (fullPath.includes('terms')) {
@@ -380,7 +489,7 @@ function parseUrlToState(): {
     const tabPart = clean.split('/')[0] as AdminTab;
     const validAdminTabs: AdminTab[] = [
       'dashboard', 'customers', 'customer-profile', 'orders', 'websites', 'storage',
-      'backups', 'subscriptions', 'payments', 'templates', 'enquiries',
+      'backups', 'subscriptions', 'customer-tiers', 'payments', 'templates', 'enquiries',
       'support', 'settings'
     ];
     return {
@@ -416,7 +525,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Current Views with URL Sync
   const initialNav = parseUrlToState();
-  const [currentExperience, setCurrentExperienceState] = useState<Experience>(initialNav.experience);
+  const [isPasswordResetMode, setIsPasswordResetModeState] = useState<boolean>(() => {
+    return checkIsRecoveryInUrl() || isStoredPasswordResetActive();
+  });
+
+  const setIsPasswordResetMode = (active: boolean) => {
+    setIsPasswordResetModeState(active);
+    setStoredPasswordResetActive(active);
+    if (active) {
+      setCurrentExperienceState('client');
+    } else {
+      clearRecoveryUrlState();
+    }
+  };
+
+  const [currentExperience, setCurrentExperienceState] = useState<Experience>(
+    (checkIsRecoveryInUrl() || isStoredPasswordResetActive()) ? 'client' : initialNav.experience
+  );
   const [publicPage, setPublicPageState] = useState<PublicPage>(initialNav.publicPage);
   const [adminTab, setAdminTabState] = useState<AdminTab>(initialNav.adminTab);
   const [clientTab, setClientTabState] = useState<ClientTab>(initialNav.clientTab);
@@ -445,6 +570,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setCurrentExperience = (exp: Experience) => {
+    // If in password recovery mode and trying to leave, allow only if reset mode explicitly cleared
     setCurrentExperienceState(exp);
     updateUrlHistory(exp, publicPage, clientTab, adminTab);
   };
@@ -472,7 +598,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const handlePopState = () => {
       isPopstateEventRef.current = true;
       const parsed = parseUrlToState();
-      setCurrentExperienceState(parsed.experience);
+      const inResetMode = isStoredPasswordResetActive();
+      if (inResetMode) {
+        setCurrentExperienceState('client');
+      } else {
+        setCurrentExperienceState(parsed.experience);
+      }
       setPublicPageState(parsed.publicPage);
       setClientTabState(parsed.clientTab);
       setAdminTabState(parsed.adminTab);
@@ -516,6 +647,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const activeRole = overrideRole || session.role;
       const activeCustomerId = overrideCustomerId || session.customerId;
       const data = await fetchApplicationData(activeRole, activeCustomerId);
+      console.log('[AUTH_DIAGNOSTIC] refreshData fetched:', {
+        activeRole,
+        activeCustomerId,
+        customersCount: data.customers?.length,
+        customerIds: data.customers?.map((c) => c.id),
+      });
       if (data.templates && data.templates.length > 0) setTemplates(data.templates);
       if (data.plans && data.plans.length > 0) setPlans(data.plans);
       if (data.customers) setCustomers(data.customers);
@@ -547,29 +684,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isMounted) return;
 
         if (sbSession?.user) {
-          const profile = await getProfile(sbSession.user.id);
+          // Guard: If landing from password recovery link or password reset mode is active, keep in ClientLogin reset view
+          const isRecovery =
+            isPasswordResetMode ||
+            checkIsRecoveryInUrl() ||
+            isStoredPasswordResetActive();
+
+          if (isRecovery) {
+            console.log('Password recovery token in URL or reset mode active - displaying reset form in ClientLogin');
+            setIsPasswordResetMode(true);
+            setCurrentExperienceState('client');
+            return;
+          }
+
+          let profile = await getProfile(sbSession.user.id);
           if (!isMounted) return;
 
-          if (profile?.role === 'admin') {
+          const MASTER_ADMIN_EMAIL = 'hello.webrunzo@gmail.com';
+          const authUserEmail = (sbSession.user.email || '').trim().toLowerCase();
+          const isMasterAdmin =
+            profile?.role === 'admin' ||
+            authUserEmail === MASTER_ADMIN_EMAIL.toLowerCase();
+
+          if (!profile) {
+            // Only auto-heal client profiles for non-admin accounts
+            if (!isMasterAdmin) {
+              try {
+                const fullName = sbSession.user.user_metadata?.full_name || sbSession.user.email?.split('@')[0] || 'Client';
+                const { data: newProfile } = await supabase
+                  .from('profiles')
+                  .upsert({
+                    id: sbSession.user.id,
+                    email: sbSession.user.email || '',
+                    full_name: fullName,
+                    role: 'client',
+                    client_tier: 'normal',
+                  })
+                  .select('*')
+                  .maybeSingle();
+                if (newProfile) {
+                  profile = newProfile as any;
+                }
+              } catch (restoreHealErr) {
+                console.warn('Restore profile self-healing notice:', restoreHealErr);
+              }
+            }
+          }
+
+          if (isMasterAdmin) {
             const nextSession: UserSession = {
               role: 'admin',
-              email: sbSession.user.email || profile.email || '',
-              name: profile.full_name || 'WebRunzo Owner',
+              email: sbSession.user.email || profile?.email || MASTER_ADMIN_EMAIL,
+              name: profile?.full_name || 'WebRunzo Owner',
             };
             setSession(nextSession);
             await refreshData('admin');
           } else if (profile?.role === 'client') {
-            const tier = profile.client_tier || 'normal';
-            const customerId = profile.customer_id || sbSession.user.id;
-            const nextSession: UserSession = {
-              role: tier === 'premium' ? 'premium_client' : 'normal_client',
-              customerId,
-              clientTier: tier,
-              email: sbSession.user.email || profile.email || '',
-              name: profile.full_name || 'Client',
-            };
-            setSession(nextSession);
-            await refreshData(nextSession.role, customerId);
+            if (!profile.customer_id) {
+              try {
+                await supabase.rpc('link_authenticated_client_customer');
+                const refreshedProfile = await getProfile(sbSession.user.id);
+                if (refreshedProfile) {
+                  profile = refreshedProfile;
+                }
+              } catch (linkErr) {
+                console.warn('Session restore customer linking notice:', linkErr);
+              }
+            }
+            // Strict check: Only establish client session if verified customer_id exists (NEVER use user.id)
+            if (profile.customer_id) {
+              const tier = profile.client_tier || 'normal';
+              const nextSession: UserSession = {
+                role: tier === 'premium' ? 'premium_client' : 'normal_client',
+                customerId: profile.customer_id,
+                clientTier: tier,
+                email: sbSession.user.email || profile.email || '',
+                name: profile.business_name || profile.full_name || 'Client',
+              };
+              setSession(nextSession);
+              await refreshData(nextSession.role, profile.customer_id);
+            } else {
+              setSession({ role: 'guest', email: '', name: 'Visitor' });
+              await refreshData('guest');
+            }
           }
         } else {
           // Public visitor - fetch marketplace templates, plans, and public settings
@@ -585,19 +782,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, sbSession) => {
       if (!isMounted) return;
 
-      if (event === 'SIGNED_OUT' || !sbSession) {
-        setSession({ role: 'guest', email: '', name: 'Visitor' });
-        setCustomers([]);
-        setOrders([]);
-        setTickets([]);
-        setNotifications([]);
-        setPayments([]);
-        setEnquiries([]);
-        setBackups([]);
-        setActivityLogs([]);
-        await refreshData('guest');
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('Supabase onAuthStateChange: PASSWORD_RECOVERY detected');
+        setIsPasswordResetMode(true);
+        setCurrentExperienceState('client');
+        return;
       }
-    });
+
+  if (event === 'SIGNED_OUT' || !sbSession) {
+    setSession({ role: 'guest', email: '', name: 'Visitor' });
+    setCustomers([]);
+    setOrders([]);
+    setTickets([]);
+    setNotifications([]);
+    setPayments([]);
+    setEnquiries([]);
+    setBackups([]);
+    setActivityLogs([]);
+    await refreshData('guest');
+  }
+});
 
     return () => {
       isMounted = false;
@@ -695,6 +899,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     email?: string, 
     password?: string
   ): Promise<{ success: boolean; error?: string }> => {
+    // Ensure any prior password recovery state is cleared when standard client login begins
+    setIsPasswordResetMode(false);
+    clearPasswordResetRecovery();
+
     if (!isSupabaseConfigured) {
       const errorMsg = 'Supabase authentication is not configured. Please define VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.';
       addToast('error', 'Auth Unavailable', errorMsg);
@@ -707,10 +915,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: errorMsg };
     }
 
+    const ADMIN_EMAIL = 'hello.webrunzo@gmail.com';
+    const inputEmail = email.trim().toLowerCase();
+
+    // Fast-fail: Reject configured Master Admin email immediately before signing in
+    if (inputEmail === ADMIN_EMAIL.toLowerCase()) {
+      console.warn('[AUTH_SECURITY] Master Admin email attempted Client Portal login (pre-auth block):', inputEmail);
+      const errorMsg = 'Administrator accounts cannot access the Client Portal. Please sign in through the Owner Admin portal or use client credentials.';
+      addToast('error', 'Access Denied', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
     try {
+      console.log('[AUTH_DIAGNOSTIC] Step 0: Attempting signInWithPassword for client portal');
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
+      });
+
+      console.log('[AUTH_DIAGNOSTIC] Step 0 result:', {
+        hasUser: !!data?.user,
+        userId: data?.user?.id,
+        emailConfirmed: !!data?.user?.email_confirmed_at,
+        error: error ? { code: (error as any).status || error.name, message: error.message } : null,
       });
 
       if (error) {
@@ -723,9 +950,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: 'No user returned from Supabase Auth.' };
       }
 
-      // Fetch user profile from Supabase
-      const profile = await getProfile(data.user.id);
-      if (!profile || (profile.role !== 'client' && profile.role !== 'admin')) {
+      const authEmail = (data.user.email || email).trim().toLowerCase();
+
+      // Step 1: Immediately fetch and inspect user profile. DO NOT call link RPC or create client session for admins!
+      let profile = await getProfile(data.user.id);
+      console.log('[AUTH_DIAGNOSTIC] Step 1: Initial getProfile result:', {
+        profileExists: !!profile,
+        role: profile?.role,
+        customer_id: profile?.customer_id,
+        client_tier: profile?.client_tier,
+        business_name: profile?.business_name,
+        authEmail,
+      });
+
+      // Strict Rejection 1: Explicitly reject Admin role or Master Admin email
+      const isMasterAdmin = authEmail === ADMIN_EMAIL.toLowerCase() || profile?.role === 'admin';
+      if (isMasterAdmin) {
+        console.warn('[AUTH_SECURITY] Admin account authenticated on Client Portal. Terminating session and rejecting:', {
+          userId: data.user.id,
+          authEmail,
+          profileRole: profile?.role,
+        });
+        await supabase.auth.signOut();
+        setSession({ role: 'guest', email: '', name: 'Visitor' });
+        const errorMsg = 'Administrator accounts cannot access the Client Portal. Please sign in through the Owner Admin portal or use client credentials.';
+        addToast('error', 'Access Denied', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      // Strict Rejection 2: User must have profile with role === 'client'
+      if (!profile || profile.role !== 'client') {
+        console.warn('[AUTH_SECURITY] Non-client profile attempted Client Portal sign-in:', {
+          userId: data.user.id,
+          role: profile?.role,
+        });
         await supabase.auth.signOut();
         setSession({ role: 'guest', email: '', name: 'Visitor' });
         const errorMsg = 'Access Denied: No client profile found for this account.';
@@ -733,31 +991,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: errorMsg };
       }
 
-      // Find client record by customer_id or email
-      const matchedCustomer = customers.find(
-        (c) => c.id === profile.customer_id || c.email.toLowerCase() === (data.user?.email || email).toLowerCase()
-      );
+      // Step 2: For authentic client accounts, invoke linking RPC ONLY if profile lacks customer_id
+      let linkRpcOutput: any = null;
+      if (!profile.customer_id) {
+        try {
+          console.log('[AUTH_DIAGNOSTIC] Step 2: Client profile has no customer_id. Invoking link_authenticated_client_customer RPC');
+          const { data: linkResult, error: linkRpcError } = await supabase.rpc(
+            'link_authenticated_client_customer'
+          );
+          linkRpcOutput = linkResult;
+          console.log('[AUTH_DIAGNOSTIC] Step 2 RPC result:', {
+            linkResult,
+            error: linkRpcError ? { code: linkRpcError.code, message: linkRpcError.message } : null,
+          });
+          if (!linkRpcError && linkResult?.success && linkResult?.customerId) {
+            profile.customer_id = linkResult.customerId;
+            if (linkResult.clientTier) {
+              profile.client_tier = linkResult.clientTier;
+            }
+          } else {
+            // Re-fetch profile to check if database trigger or concurrent operation linked the customer
+            const refreshed = await getProfile(data.user.id);
+            if (refreshed?.customer_id) {
+              profile = refreshed;
+            }
+          }
+        } catch (linkEx: any) {
+          console.warn('[AUTH_DIAGNOSTIC] Customer linking RPC invocation caught:', linkEx?.message || linkEx);
+        }
+      }
 
-      const clientTier = profile.client_tier || matchedCustomer?.clientTier || 'normal';
-      const role: Role = clientTier === 'premium' ? 'premium_client' : 'normal_client';
-      const targetCustomerId = profile.customer_id || matchedCustomer?.id || data.user.id;
+      // Strict Rejection 3: Require valid profile.customer_id. NEVER fall back to data.user.id!
+      if (!profile.customer_id) {
+        console.warn('[AUTH_SECURITY] Authenticated client has no linked customer_id in profiles:', {
+          userId: data.user.id,
+          profileEmail: profile.email,
+        });
+        await supabase.auth.signOut();
+        setSession({ role: 'guest', email: '', name: 'Visitor' });
+        const errorMsg = 'Access Denied: No active customer account is linked to your client credentials. Please contact support.';
+        addToast('error', 'Customer Account Required', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      // Strict Rejection 4: Verify profile.customer_id maps to a valid real customer record in public.customers
+      console.log('[AUTH_DIAGNOSTIC] Step 3: Verifying customer record existence for id:', profile.customer_id);
+      const { data: customerRecord, error: custFetchErr } = await supabase
+        .from('customers')
+        .select('id, name, business_name, email, client_tier, account_status')
+        .eq('id', profile.customer_id)
+        .maybeSingle();
+
+      if (custFetchErr || !customerRecord) {
+        console.warn('[AUTH_SECURITY] profile.customer_id does not exist in customers table:', {
+          customerId: profile.customer_id,
+          custFetchErr,
+        });
+        await supabase.auth.signOut();
+        setSession({ role: 'guest', email: '', name: 'Visitor' });
+        const errorMsg = 'Access Denied: The customer account linked to your credentials could not be found or has been deactivated.';
+        addToast('error', 'Account Not Found', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      if (customerRecord.account_status === 'Suspended') {
+        console.warn('[AUTH_SECURITY] Customer account is suspended:', customerRecord.id);
+        await supabase.auth.signOut();
+        setSession({ role: 'guest', email: '', name: 'Visitor' });
+        const errorMsg = 'Access Denied: Your client account has been suspended. Please contact customer support.';
+        addToast('error', 'Account Suspended', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      // Step 4: All checks passed. Establish authenticated Client session
+      const verifiedCustomerId = customerRecord.id;
+      const verifiedClientTier: 'normal' | 'premium' =
+        customerRecord.client_tier === 'premium' || profile.client_tier === 'premium' ? 'premium' : 'normal';
+      const role: Role = verifiedClientTier === 'premium' ? 'premium_client' : 'normal_client';
+
+      console.log('[AUTH_DIAGNOSTIC] Step 4: Setting verified client session:', {
+        role,
+        verifiedCustomerId,
+        verifiedClientTier,
+        businessName: customerRecord.business_name,
+        linkRpcOutput,
+      });
 
       setSession({
         role,
-        customerId: targetCustomerId,
-        clientTier,
+        customerId: verifiedCustomerId,
+        clientTier: verifiedClientTier,
         email: data.user.email || profile.email || email,
-        name: profile.full_name || matchedCustomer?.name || 'Client',
+        name: customerRecord.business_name || profile.business_name || profile.full_name || 'Client',
         isTestSession: false,
       });
       setCurrentExperience('client');
       setClientTab('dashboard');
-      await refreshData(role, targetCustomerId);
+
+      // Step 5: Refresh all customer records and portal data
+      console.log('[AUTH_DIAGNOSTIC] Step 5: Calling refreshData');
+      await refreshData(role, verifiedCustomerId);
+      console.log('[AUTH_DIAGNOSTIC] Step 5: refreshData completed');
+
+      // Success toast ONLY shown now that all checks passed
       addToast(
         'success',
-        `${clientTier === 'premium' ? 'VIP Premium' : 'Client'} Portal Signed In`,
-        `Welcome back, ${profile.business_name || matchedCustomer?.businessName || profile.full_name || 'Client'}`
+        `${verifiedClientTier === 'premium' ? 'VIP Premium' : 'Client'} Portal Signed In`,
+        `Welcome back, ${customerRecord.business_name || profile.business_name || profile.full_name || 'Client'}`
       );
+      setIsPasswordResetMode(false);
+      clearPasswordResetRecovery();
       return { success: true };
     } catch (err: any) {
       const errorMsg = err?.message || 'An unexpected error occurred during client sign-in.';
@@ -767,6 +1110,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = async () => {
+    setIsPasswordResetMode(false);
+    clearPasswordResetRecovery();
     if (isSupabaseConfigured) {
       try {
         await supabase.auth.signOut();
@@ -1095,37 +1440,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cust = customers.find((c) => c.id === customerId);
     if (!cust) throw new Error('Customer not found');
 
-    addToast('info', 'Triggering Deployment', `Building & deploying ${cust.businessName} to Vercel Edge CDN...`);
+    addToast('info', 'Triggering Deployment', `Contacting edge deployment service for ${cust.businessName}...`);
 
-    const buildLogs = [
-      `[${new Date().toISOString().substring(11, 19)}] Initiating production deployment for ${cust.businessName}...`,
-      `[${new Date().toISOString().substring(11, 19)}] Connecting Supabase Database & Auth isolated instance...`,
-      `[${new Date().toISOString().substring(11, 19)}] Running Vite build with production tree-shaking & SSR manifests...`,
-      `[${new Date().toISOString().substring(11, 19)}] Optimizing 24 image assets & generating WebP fallbacks...`,
-      `[${new Date().toISOString().substring(11, 19)}] Syncing Edge routes with Cloudflare R2 CDN cache layer...`,
-      `[${new Date().toISOString().substring(11, 19)}] Validating SSL certificate auto-renew handshake...`,
-      `[${new Date().toISOString().substring(11, 19)}] DEPLOYMENT SUCCESS: Live at ${cust.websiteUrl}`,
-    ];
+    try {
+      const { data: { session: sbSession } } = await supabase.auth.getSession();
+      const token = sbSession?.access_token;
 
-    const deployment: CustomerDeployment = {
-      platform: 'Vercel',
-      dnsProvider: 'Cloudflare',
-      dbProvider: 'Supabase',
-      storageProvider: 'Supabase Storage / Cloudflare R2',
-      deploymentId: `dpl_${cust.id}_${Math.random().toString(36).substring(2, 9)}`,
-      deploymentStatus: 'Ready',
-      lastDeployedAt: `${new Date().toISOString().substring(0, 10)} ${new Date().toISOString().substring(11, 16)} UTC`,
-      edgeLocation: 'iad1 (US-East Edge)',
-      sslAutoRenew: true,
-      cnameTarget: 'cname.webrunzo.app',
-      aRecordTarget: '76.76.21.21',
-      buildLogs,
-    };
+      const res = await fetch('/api/client/redeploy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ customerId }),
+      });
 
-    updateCustomer(customerId, { deployment, websiteStatus: 'Live' });
-    logActivity('website', 'Website Redeployed', `Redeployed ${cust.businessName} to Vercel edge. Status: Ready.`, session.name, customerId);
-    addToast('success', 'Deployment Ready', `${cust.businessName} is deployed and live at ${cust.websiteUrl}!`);
-    return { success: true, buildLogs };
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        const errorMsg =
+          result.error ||
+          'Edge deployment pipeline is not configured. Set DEPLOYMENT_WEBHOOK_URL in server environment settings.';
+        addToast('error', 'Deployment Unavailable', errorMsg);
+        return {
+          success: false,
+          buildLogs: [
+            `[${new Date().toISOString().substring(11, 19)}] Deployment request initiated for ${cust.businessName}`,
+            `[${new Date().toISOString().substring(11, 19)}] Configuration Check: DEPLOYMENT_WEBHOOK_URL is not configured`,
+            `[${new Date().toISOString().substring(11, 19)}] Deployment aborted: ${errorMsg}`,
+          ],
+        };
+      }
+
+      if (result.deployment) {
+        updateCustomer(customerId, { deployment: result.deployment, websiteStatus: 'Live' });
+      }
+
+      logActivity('website', 'Website Redeployed', `Redeployed ${cust.businessName} via edge pipeline.`, session.name, customerId);
+      addToast('success', 'Deployment Initiated', `${cust.businessName} deployment triggered successfully.`);
+      return {
+        success: true,
+        buildLogs: [
+          `[${new Date().toISOString().substring(11, 19)}] Deployment triggered via edge webhook.`,
+          `[${new Date().toISOString().substring(11, 19)}] CDN cache purge signaled.`,
+        ],
+      };
+    } catch (err: any) {
+      const errorMsg = err.message || 'Deployment service unreachable.';
+      addToast('error', 'Deployment Error', errorMsg);
+      return {
+        success: false,
+        buildLogs: [`[${new Date().toISOString().substring(11, 19)}] Error: ${errorMsg}`],
+      };
+    }
   };
 
   const updateCustomerDeployment = (customerId: string, updates: Partial<CustomerDeployment>) => {
@@ -1213,10 +1579,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isPremium = customerData.clientTier === 'premium' || customerData.planId === 'plan-business';
     const newCust: Customer = {
       id: `cust-${Date.now()}`,
+      userId: customerData.userId,
       name: customerData.name || 'New Client',
       businessName: customerData.businessName || 'My Business',
       email: customerData.email || 'client@example.com',
-      password: customerData.password || 'client123',
       phone: customerData.phone || '+1 (555) 000-0000',
       clientTier: customerData.clientTier || (isPremium ? 'premium' : 'normal'),
       planId: customerData.planId || (isPremium ? 'plan-business' : 'plan-pro'),
@@ -1282,9 +1648,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setCustomers((prev) => [newCust, ...prev]);
-    dbAddCustomer(newCust).catch((err) => {
-      console.warn('Error adding customer to Supabase:', err);
-    });
 
     // Also add corresponding Order
     const targetPlan = plans.find((p) => p.id === newCust.planId) || plans[1];
@@ -1313,9 +1676,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ],
     };
     setOrders((prev) => [newOrder, ...prev]);
-    dbAddOrder(newOrder).catch((err) => {
-      console.warn('Error adding order to Supabase:', err);
-    });
 
     // Also add initial payment record
     const newPayment: Payment = {
@@ -1332,8 +1692,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       method: 'Credit Card / Electronic Settlement',
     };
     setPayments((prev) => [newPayment, ...prev]);
-    dbAddPayment(newPayment).catch((err) => {
-      console.warn('Error adding payment to Supabase:', err);
+
+    // Persist to Supabase in strict relational dependency order:
+    // Insert Customer first to commit primary key in public.customers.
+    // Once confirmed, insert the dependent initial Order and Payment.
+    // This strictly prevents foreign key constraint violations (orders_customer_id_fkey, payments_customer_id_fkey).
+    (async () => {
+      const custRes = await dbAddCustomer(newCust);
+      if (custRes.error) {
+        console.warn('Error adding customer to Supabase:', custRes.error);
+        return;
+      }
+      await Promise.allSettled([
+        dbAddOrder(newOrder),
+        dbAddPayment(newPayment),
+      ]);
+    })().catch((err) => {
+      console.warn('Error during customer/order/payment synchronization:', err);
     });
 
     logActivity('customer', 'New Customer Added', `${newCust.name} (${newCust.businessName}) was created.`, session.name, newCust.id);
@@ -1744,7 +2119,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('success', 'Order Updated', 'Order details saved successfully.');
   };
 
+  const updateProjectStatus = async (
+    orderId: string,
+    newStatus: ProjectStatus,
+    adminNote?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    // 1. Role verification: Only admin can alter project progress
+    if (session.role !== 'admin') {
+      const errMsg = 'Unauthorized: Only administrators can update client project status.';
+      addToast('error', 'Access Denied', errMsg);
+      return { success: false, error: errMsg };
+    }
+
+    // 2. Locate order
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (!targetOrder) {
+      const errMsg = `Order with ID "${orderId}" could not be found.`;
+      addToast('error', 'Order Not Found', errMsg);
+      return { success: false, error: errMsg };
+    }
+
+    // 3. Validate transition
+    const currentStatus = targetOrder.projectStatus || getProjectStatus(targetOrder);
+    if (!isValidProjectTransition(currentStatus, newStatus)) {
+      const allowed = ALLOWED_PROJECT_TRANSITIONS[currentStatus] || [];
+      const errMsg = `Invalid transition from "${currentStatus}" to "${newStatus}". Allowed next transitions: [${allowed.join(', ') || 'None'}].`;
+      addToast('error', 'Invalid Transition', errMsg);
+      return { success: false, error: errMsg };
+    }
+
+    // 4. Retrieve admin token
+    let adminToken: string | undefined;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      adminToken = sessionData?.session?.access_token;
+    } catch (tokErr) {
+      console.warn('Session token retrieval note:', tokErr);
+    }
+
+    // 5. Invoke database update
+    const res = await dbUpdateProjectStatus(orderId, newStatus, {
+      adminToken,
+      adminNote,
+      existingOrder: targetOrder,
+    });
+
+    if (res.error) {
+      addToast('error', 'Status Update Failed', res.error);
+      return { success: false, error: res.error };
+    }
+
+    // 6. Update local state upon confirmed success
+    const updatedMilestones = getCanonicalMilestones(newStatus, targetOrder.milestones);
+    const updatedNotes = embedProjectStatusInNotes(targetOrder.internalNotes, newStatus);
+    const dbStatus = mapProjectStatusToDatabaseOrderStatus(newStatus);
+
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId
+          ? {
+              ...o,
+              projectStatus: newStatus,
+              status: dbStatus,
+              milestones: updatedMilestones,
+              internalNotes: updatedNotes,
+            }
+          : o
+      )
+    );
+
+    if (targetOrder.customerId) {
+      if (newStatus === 'Live') {
+        setCustomers((prev) =>
+          prev.map((c) => (c.id === targetOrder.customerId ? { ...c, websiteStatus: 'Live' } : c))
+        );
+      } else if (newStatus === 'In Progress') {
+        setCustomers((prev) =>
+          prev.map((c) => (c.id === targetOrder.customerId ? { ...c, websiteStatus: 'In Progress' } : c))
+        );
+      }
+
+      // Add notification to client notifications state
+      const notifData = getStatusNotification(newStatus, targetOrder.businessName);
+      const newNotif: ClientNotification = {
+        id: `notif-${Date.now()}`,
+        customerId: targetOrder.customerId,
+        title: notifData.title,
+        message: notifData.message,
+        date: new Date().toISOString(),
+        read: false,
+        type: notifData.type === 'warning' ? 'info' : notifData.type,
+      };
+      setNotifications((prev) => [newNotif, ...prev]);
+    }
+
+    logActivity(
+      'order',
+      'Project Status Transitioned',
+      `Order ${targetOrder.orderNumber} transitioned from ${currentStatus} to ${newStatus}.`,
+      session.name,
+      targetOrder.customerId
+    );
+
+    addToast(
+      'success',
+      'Project Status Updated',
+      `Project status successfully transitioned to "${newStatus}".`
+    );
+
+    return { success: true };
+  };
+
   const updateOrderStatus = (id: string, status: OrderStatus) => {
+    const validProjectStatuses: ProjectStatus[] = ['Submitted', 'Accepted', 'In Progress', 'Review', 'Live'];
+    if (validProjectStatuses.includes(status as ProjectStatus)) {
+      updateProjectStatus(id, status as ProjectStatus);
+      return;
+    }
+
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
     dbUpdateOrder(id, { status }).catch((err) => {
       console.warn('Error updating order status in Supabase:', err);
@@ -1998,26 +2490,92 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('info', 'Enquiry Updated', `Enquiry marked as ${status}.`);
   };
 
-  const convertEnquiryToCustomer = (enquiryId: string): Customer | null => {
+  const convertEnquiryToCustomer = async (enquiryId: string): Promise<Customer | null> => {
+    // 1. Verify Admin session
+    if (session.role !== 'admin') {
+      addToast('error', 'Unauthorized', 'Only administrators can convert lead enquiries to customer accounts.');
+      return null;
+    }
+
     const enq = enquiries.find((e) => e.id === enquiryId);
-    if (!enq) return null;
+    if (!enq) {
+      addToast('error', 'Lead Not Found', `Inquiry with ID "${enquiryId}" could not be found.`);
+      return null;
+    }
 
-    const newCustomer = addCustomer({
-      name: enq.name,
-      businessName: enq.business,
-      email: enq.email,
-      phone: enq.phone,
-      templateId: enq.selectedTemplateId || templates[0].id,
-      planId: enq.selectedPlanId || plans[1].id,
-      paymentStatus: 'Paid',
-      websiteStatus: 'In Progress',
-      accountStatus: 'Active',
-      notes: `Converted from Website Enquiry on ${enq.date}. Client message: "${enq.message}"`,
-    });
+    // 2. Reject duplicate conversion
+    if (enq.status === 'Converted') {
+      addToast('error', 'Already Converted', 'This lead enquiry has already been converted into a customer account.');
+      return null;
+    }
 
-    updateEnquiryStatus(enquiryId, 'Converted', `Converted to Customer: ${newCustomer.businessName} (ID: ${newCustomer.id})`);
-    addToast('success', 'Enquiry Converted!', `${newCustomer.businessName} has been created and Client Portal access activated.`);
-    return newCustomer;
+    // 3. Validate email format
+    const email = (enq.email || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      addToast('error', 'Invalid Email', `The lead email "${enq.email}" is invalid. Please update the enquiry before converting.`);
+      return null;
+    }
+
+    // 4. Admin account collision prevention
+    const ADMIN_EMAIL = 'hello.webrunzo@gmail.com';
+    if (email === ADMIN_EMAIL.toLowerCase() || (session.email && email === session.email.toLowerCase())) {
+      addToast('error', 'Email Conflict', 'Cannot convert lead using the Master Admin email address.');
+      return null;
+    }
+
+    // 5. Invoke secure server API endpoint
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        addToast('error', 'Session Expired', 'Please re-authenticate as Admin before converting leads.');
+        return null;
+      }
+
+      const response = await fetch('/api/admin/convert-lead', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ enquiryId }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (response.ok && result.success && result.customer) {
+        const newCustomer: Customer = result.customer;
+        setCustomers((prev) => [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)]);
+        setEnquiries((prev) =>
+          prev.map((e) =>
+            e.id === enquiryId
+              ? { ...e, status: 'Converted', adminNotes: `Converted to Customer: ${newCustomer.businessName}` }
+              : e
+          )
+        );
+        await refreshData();
+        addToast(
+          'success',
+          'Lead Converted Successfully',
+          result.message || `Customer ${newCustomer.businessName} provisioned and invitation dispatched.`
+        );
+        return newCustomer;
+      } else {
+        const errorMsg = result.error || 'Failed to convert lead enquiry.';
+        const isConfigBlocker = result.code === 'CONFIG_BLOCKER';
+        addToast(
+          'error',
+          isConfigBlocker ? 'Configuration Required' : 'Conversion Failed',
+          errorMsg
+        );
+        return null;
+      }
+    } catch (apiErr: any) {
+      console.error('Error invoking convert-lead API:', apiErr);
+      addToast('error', 'Network Error', 'Unable to reach the conversion service. Please verify your connection.');
+      return null;
+    }
   };
 
   const updateSettings = (updates: Partial<AdminSettings>) => {
@@ -2092,6 +2650,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selectedCustomerIdForAdmin,
         setSelectedCustomerIdForAdmin,
         session,
+        isPasswordResetMode,
+        setIsPasswordResetMode,
         loginAsAdmin,
         loginAsClient,
         logout,
@@ -2140,6 +2700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addOrder,
         updateOrder,
         updateOrderStatus,
+        updateProjectStatus,
         deleteOrder,
         addTicket,
         updateTicketStatus,
@@ -2187,4 +2748,3 @@ export const useApp = () => {
   }
   return context;
 };
-

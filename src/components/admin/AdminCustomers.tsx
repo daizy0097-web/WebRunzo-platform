@@ -24,7 +24,8 @@ import {
   Globe,
   ShieldAlert,
   Wrench,
-  Lock
+  Lock,
+  ClipboardList
 } from 'lucide-react';
 
 export const AdminCustomers: React.FC = () => {
@@ -243,6 +244,7 @@ export const AdminCustomers: React.FC = () => {
                 <th className="p-4 sm:px-6">Customer & Business</th>
                 <th className="p-4">Assigned Plan</th>
                 <th className="p-4">Template</th>
+                <th className="p-4">Intake Status</th>
                 <th className="p-4">Account Status</th>
                 <th className="p-4">Website Status</th>
                 <th className="p-4">Plan Expiry</th>
@@ -252,7 +254,7 @@ export const AdminCustomers: React.FC = () => {
             <tbody className="divide-y divide-slate-800/60">
               {paginatedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-500">
+                  <td colSpan={8} className="p-8 text-center text-slate-500">
                     No customers found matching the selected filters.
                   </td>
                 </tr>
@@ -260,6 +262,7 @@ export const AdminCustomers: React.FC = () => {
                 paginatedCustomers.map((cust) => {
                   const plan = plans.find((p) => p.id === cust.planId);
                   const template = templates.find((t) => t.id === cust.templateId);
+                  const obStatus = cust.customContent?.onboarding?.status || 'Not Started';
 
                   return (
                     <tr key={cust.id} className="hover:bg-slate-800/50 transition">
@@ -290,6 +293,20 @@ export const AdminCustomers: React.FC = () => {
                             <div className="text-[10px] text-slate-400">{template?.category}</div>
                           </div>
                         </div>
+                      </td>
+
+                      {/* Intake Status */}
+                      <td className="p-4">
+                        <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold inline-flex items-center gap-1 border ${
+                          obStatus === 'Submitted'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : obStatus === 'In Progress'
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                            : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}>
+                          <ClipboardList className="w-3 h-3" />
+                          <span>{obStatus}</span>
+                        </span>
                       </td>
 
                       {/* Account Status */}

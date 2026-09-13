@@ -219,7 +219,7 @@ export const AdminDashboard: React.FC = () => {
 
           {/* 6. Expiring Websites */}
           <div 
-            onClick={() => setAdminTab('subscriptions')}
+            onClick={() => setAdminTab('customer-tiers')}
             className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 hover:border-slate-700 transition space-y-1.5 cursor-pointer"
           >
             <div className="flex items-center justify-between text-slate-400">
@@ -232,7 +232,7 @@ export const AdminDashboard: React.FC = () => {
 
           {/* 7. Expired Websites */}
           <div 
-            onClick={() => setAdminTab('subscriptions')}
+            onClick={() => setAdminTab('customer-tiers')}
             className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 hover:border-slate-700 transition space-y-1.5 cursor-pointer"
           >
             <div className="flex items-center justify-between text-slate-400">

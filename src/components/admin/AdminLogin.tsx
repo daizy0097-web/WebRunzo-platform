@@ -97,7 +97,7 @@ export const AdminLogin: React.FC = () => {
         )}
 
         {/* Form Login */}
-        <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+        <form id="admin-login-form" name="admin_portal_login" onSubmit={handleSubmit} className="space-y-4 pt-1" autoComplete="on">
           {error && (
             <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -110,7 +110,10 @@ export const AdminLogin: React.FC = () => {
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
               <input
+                id="admin-email-input"
+                name="admin_owner_username"
                 type="email"
+                autoComplete="username"
                 placeholder="admin@webrunzo.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -126,7 +129,10 @@ export const AdminLogin: React.FC = () => {
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
               <input
+                id="admin-password-input"
+                name="admin_owner_password"
                 type="password"
+                autoComplete="current-password"
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

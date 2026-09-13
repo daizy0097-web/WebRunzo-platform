@@ -41,7 +41,7 @@ export const ServicesSection: React.FC = () => {
     {
       icon: ShoppingCart,
       title: 'Booking, Leads & E-commerce Integrations',
-      description: 'Seamless integration with Stripe payments, Calendly scheduling, OpenTable, contact forms, and WhatsApp live chat.',
+      description: 'Seamless integration with Razorpay payments, Calendly scheduling, OpenTable, contact forms, and WhatsApp live chat.',
       badge: 'Interactive',
     },
     {

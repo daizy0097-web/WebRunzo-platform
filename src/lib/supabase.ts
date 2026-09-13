@@ -38,6 +38,35 @@ export interface SupabaseProfile {
 }
 
 /**
+ * Resolves the primary base URL of the running application.
+ * Safely derives origin from the current window location in the browser,
+ * ensuring the exact public origin is used regardless of build-time env vars.
+ */
+export function getAppBaseUrl(): string {
+  if (
+    typeof window !== 'undefined' &&
+    window.location &&
+    window.location.origin &&
+    window.location.origin !== 'null' &&
+    !window.location.origin.startsWith('about:')
+  ) {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+
+  const envUrl = (import.meta.env.VITE_APP_URL as string) || '';
+  if (
+    envUrl &&
+    typeof envUrl === 'string' &&
+    envUrl.startsWith('http') &&
+    !envUrl.includes('MY_APP_URL')
+  ) {
+    return envUrl.replace(/\/+$/, '');
+  }
+
+  return '';
+}
+
+/**
  * Fetch the authenticated user's profile and role from the `profiles` table.
  */
 export async function getProfile(userId: string): Promise<SupabaseProfile | null> {

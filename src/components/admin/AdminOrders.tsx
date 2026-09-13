@@ -1,7 +1,19 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Order, OrderStatus } from '../../types';
+import { 
+  Order, 
+  OrderStatus, 
+  ProjectStatus, 
+  PROJECT_LIFECYCLE_STEPS, 
+  ALLOWED_PROJECT_TRANSITIONS 
+} from '../../types';
 import { formatINR } from '../../utils/formatters';
+import {
+  getProjectStatus,
+  getStatusBadgeStyle,
+  getStatusProgressPercentage,
+  getStatusPhaseDescription,
+} from '../../utils/projectLifecycle';
 import { 
   ShoppingBag, 
   Search, 
@@ -20,13 +32,19 @@ import {
   ShieldCheck,
   ChevronRight,
   Layers,
-  FileText
+  FileText,
+  Loader2,
+  Send,
+  RotateCcw,
+  Check,
+  ClipboardList
 } from 'lucide-react';
 
 export const AdminOrders: React.FC = () => {
   const { 
     orders, 
     updateOrderStatus, 
+    updateProjectStatus,
     updateOrder, 
     addOrder, 
     customers, 
@@ -40,8 +58,13 @@ export const AdminOrders: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(orders[0] || null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
+
+  // Transition and Note State
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [adminNote, setAdminNote] = useState('');
 
   // New Order Form State
   const [newOrderCustomer, setNewOrderCustomer] = useState(customers[0]?.id || '');
@@ -50,30 +73,38 @@ export const AdminOrders: React.FC = () => {
   const [newOrderAmount, setNewOrderAmount] = useState(24999);
   const [newOrderNotes, setNewOrderNotes] = useState('Standard Turnkey Website Build');
 
+  const selectedOrder = (selectedOrderId ? orders.find((o) => o.id === selectedOrderId) : null) || orders[0] || null;
+
   const filteredOrders = orders.filter((ord) => {
+    const pStatus = ord.projectStatus || getProjectStatus(ord);
     const matchesSearch = 
       ord.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ord.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ord.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ord.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || ord.status === statusFilter;
+    const matchesStatus = statusFilter === 'all' || pStatus === statusFilter || ord.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusBadge = (status: OrderStatus) => {
-    switch (status) {
-      case 'New':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'Pending':
-        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-      case 'In Progress':
-        return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-      case 'Completed':
-        return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-      case 'Cancelled':
-        return 'bg-rose-500/20 text-rose-400 border-rose-500/30';
-      default:
-        return 'bg-slate-700 text-slate-300';
+  const currentProjectStatus: ProjectStatus = selectedOrder 
+    ? (selectedOrder.projectStatus || getProjectStatus(selectedOrder)) 
+    : 'Submitted';
+
+  const allowedTransitions = ALLOWED_PROJECT_TRANSITIONS[currentProjectStatus] || [];
+
+  const handleProjectTransition = async (newStatus: ProjectStatus) => {
+    if (!selectedOrder) return;
+    setIsUpdatingStatus(true);
+    setUpdateError(null);
+
+    const res = await updateProjectStatus(selectedOrder.id, newStatus, adminNote.trim() || undefined);
+    setIsUpdatingStatus(false);
+
+    if (!res.success) {
+      setUpdateError(res.error || `Failed to transition status to ${newStatus}`);
+    } else {
+      setAdminNote('');
+      setUpdateError(null);
     }
   };
 
@@ -92,6 +123,7 @@ export const AdminOrders: React.FC = () => {
       templateId: newOrderTemplate,
       amount: Number(newOrderAmount),
       status: 'New',
+      projectStatus: 'Submitted',
       paymentStatus: 'Paid',
       requirements: newOrderNotes,
       clientTier: cust.clientTier,
@@ -112,9 +144,6 @@ export const AdminOrders: React.FC = () => {
     };
 
     updateOrder(orderId, { milestones: newMilestones });
-    if (selectedOrder && selectedOrder.id === orderId) {
-      setSelectedOrder({ ...selectedOrder, milestones: newMilestones });
-    }
   };
 
   return (
@@ -124,10 +153,10 @@ export const AdminOrders: React.FC = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
             <ShoppingBag className="w-6 h-6 text-indigo-400" />
-            Order & Fulfillment Management
+            Order & Client Progress Tracking
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Track client onboarding milestones, turnkey development phases, and launch dates.
+            Manage turnkey project lifecycles (Submitted → Accepted → In Progress → Review → Live) with enforced transitions.
           </p>
         </div>
 
@@ -155,7 +184,7 @@ export const AdminOrders: React.FC = () => {
 
         {/* Status Pills */}
         <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-          {['all', 'New', 'In Progress', 'Review', 'Completed'].map((st) => (
+          {['all', ...PROJECT_LIFECYCLE_STEPS].map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -182,14 +211,17 @@ export const AdminOrders: React.FC = () => {
           ) : (
             filteredOrders.map((ord) => {
               const isSelected = selectedOrder?.id === ord.id;
-              const completedMilestones = ord.milestones?.filter((m) => m.completed).length || 0;
-              const totalMilestones = ord.milestones?.length || 4;
-              const progressPct = Math.round((completedMilestones / totalMilestones) * 100);
+              const pStatus = ord.projectStatus || getProjectStatus(ord);
+              const progressPct = getStatusProgressPercentage(pStatus);
+              const badgeStyle = getStatusBadgeStyle(pStatus);
 
               return (
                 <div
                   key={ord.id}
-                  onClick={() => setSelectedOrder(ord)}
+                  onClick={() => {
+                    setSelectedOrderId(ord.id);
+                    setUpdateError(null);
+                  }}
                   className={`p-5 rounded-2xl border transition cursor-pointer bg-slate-900/90 ${
                     isSelected
                       ? 'border-emerald-500/80 shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500/50'
@@ -210,8 +242,8 @@ export const AdminOrders: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${getStatusBadge(ord.status)}`}>
-                        {ord.status}
+                      <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${badgeStyle}`}>
+                        {pStatus}
                       </span>
                       <span className="font-mono font-bold text-sm text-emerald-400">
                         {formatINR(ord.amount, settings?.currencySymbol)}
@@ -237,13 +269,13 @@ export const AdminOrders: React.FC = () => {
                   {/* Milestone Progress Bar */}
                   <div className="mt-4 pt-3 border-t border-slate-800/80">
                     <div className="flex items-center justify-between text-[11px] mb-1.5 text-slate-400">
-                      <span>Fulfillment Progress ({completedMilestones}/{totalMilestones} steps)</span>
+                      <span>Project Lifecycle Progress ({pStatus})</span>
                       <span className="font-mono font-bold text-slate-200">{progressPct}%</span>
                     </div>
                     <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
                       <div
                         className={`h-full transition-all duration-300 ${
-                          progressPct === 100 ? 'bg-emerald-500' : 'bg-indigo-500'
+                          progressPct === 100 ? 'bg-emerald-500' : progressPct >= 75 ? 'bg-indigo-500' : 'bg-amber-500'
                         }`}
                         style={{ width: `${progressPct}%` }}
                       />
@@ -260,12 +292,153 @@ export const AdminOrders: React.FC = () => {
           <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 space-y-6 self-start sticky top-20">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div>
-                <span className="text-[10px] text-slate-400 font-mono">ORDER DETAILS</span>
+                <span className="text-[10px] text-slate-400 font-mono">PROJECT STATUS</span>
                 <h2 className="text-base font-extrabold text-white">{selectedOrder.orderNumber}</h2>
               </div>
-              <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${getStatusBadge(selectedOrder.status)}`}>
-                {selectedOrder.status}
+              <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${getStatusBadgeStyle(currentProjectStatus)}`}>
+                {currentProjectStatus}
               </span>
+            </div>
+
+            {/* Error Banner */}
+            {updateError && (
+              <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-400" />
+                <div className="flex-1">{updateError}</div>
+              </div>
+            )}
+
+            {/* Lifecycle Visual Stepper */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <span>Lifecycle Stepper</span>
+                <span className="text-emerald-400 font-mono">{getStatusProgressPercentage(currentProjectStatus)}%</span>
+              </div>
+              <div className="grid grid-cols-5 gap-1 pt-1">
+                {PROJECT_LIFECYCLE_STEPS.map((step, idx) => {
+                  const stepIndex = PROJECT_LIFECYCLE_STEPS.indexOf(step);
+                  const currentIndex = PROJECT_LIFECYCLE_STEPS.indexOf(currentProjectStatus);
+                  const isDone = stepIndex < currentIndex || currentProjectStatus === 'Live';
+                  const isCurrent = step === currentProjectStatus;
+
+                  return (
+                    <div key={step} className="text-center group relative">
+                      <div
+                        className={`h-2 rounded-full mb-1 transition-all ${
+                          isDone
+                            ? 'bg-emerald-500'
+                            : isCurrent
+                            ? 'bg-amber-400 animate-pulse ring-1 ring-amber-400/50'
+                            : 'bg-slate-800'
+                        }`}
+                      />
+                      <span
+                        className={`text-[9px] block truncate font-medium ${
+                          isCurrent
+                            ? 'text-white font-bold'
+                            : isDone
+                            ? 'text-emerald-400'
+                            : 'text-slate-500'
+                        }`}
+                        title={step}
+                      >
+                        {step}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1 leading-relaxed">
+                {getStatusPhaseDescription(currentProjectStatus)}
+              </p>
+            </div>
+
+            {/* Transition Controls */}
+            <div className="space-y-3 p-4 rounded-2xl bg-slate-950/80 border border-slate-800">
+              <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                <span>Advance Lifecycle</span>
+                {isUpdatingStatus && (
+                  <span className="text-[10px] text-indigo-400 flex items-center gap-1 font-mono">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Updating DB...
+                  </span>
+                )}
+              </div>
+
+              {allowedTransitions.length > 0 ? (
+                <div className="space-y-2.5">
+                  {/* Optional Admin Note */}
+                  <div>
+                    <label className="text-[10px] text-slate-400 font-medium block mb-1">
+                      Status Note / Revision Reason (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      disabled={isUpdatingStatus}
+                      value={adminNote}
+                      onChange={(e) => setAdminNote(e.target.value)}
+                      placeholder={
+                        currentProjectStatus === 'Review' 
+                          ? 'e.g. Needs revised logo placement or client requested header changes...' 
+                          : 'e.g. Intake reviewed; starting staging development...'
+                      }
+                      className="w-full text-xs px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                    />
+                  </div>
+
+                  {/* Transition Action Buttons */}
+                  <div className="space-y-1.5 pt-1">
+                    {allowedTransitions.map((nextStatus) => {
+                      const isPromote = nextStatus === 'Live' || nextStatus === 'Review' || nextStatus === 'Accepted';
+                      const isRevise = nextStatus === 'In Progress' && currentProjectStatus === 'Review';
+
+                      return (
+                        <button
+                          key={nextStatus}
+                          disabled={isUpdatingStatus}
+                          onClick={() => handleProjectTransition(nextStatus)}
+                          className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-between transition cursor-pointer disabled:opacity-50 ${
+                            isRevise
+                              ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                              : nextStatus === 'Live'
+                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20'
+                              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            {isRevise ? (
+                              <RotateCcw className="w-3.5 h-3.5 text-amber-300" />
+                            ) : nextStatus === 'Live' ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-200" />
+                            ) : (
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            )}
+                            <span>
+                              {isRevise
+                                ? 'Request Changes (→ In Progress)'
+                                : nextStatus === 'Live'
+                                ? 'Approve & Launch (→ Live)'
+                                : nextStatus === 'Accepted'
+                                ? 'Accept Project (→ Accepted)'
+                                : nextStatus === 'In Progress'
+                                ? 'Start Development (→ In Progress)'
+                                : `Submit for Review (→ ${nextStatus})`}
+                            </span>
+                          </span>
+                          <span className="text-[10px] font-mono opacity-80 uppercase">
+                            {currentProjectStatus} → {nextStatus}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <span>Project is Live on production CDN. All lifecycle phases complete.</span>
+                </div>
+              )}
             </div>
 
             {/* Client & Business Snapshot */}
@@ -291,41 +464,20 @@ export const AdminOrders: React.FC = () => {
               </div>
             </div>
 
-            {/* Status Change Selector */}
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Update Order Status</label>
-              <select
-                value={selectedOrder.status}
-                onChange={(e) => {
-                  const newSt = e.target.value as OrderStatus;
-                  updateOrderStatus(selectedOrder.id, newSt);
-                  setSelectedOrder({ ...selectedOrder, status: newSt });
-                }}
-                className="w-full text-xs p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="New">New</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Review">Review & QA</option>
-                <option value="Completed">Completed & Live</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-
-            {/* Milestones Checkoffs */}
+            {/* Milestones History */}
             <div className="space-y-3">
               <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                <span>Milestone Steps</span>
-                <span className="text-[10px] text-slate-500">Click check to toggle</span>
+                <span>Milestone History</span>
+                <span className="text-[10px] text-slate-500">Auto-synced with lifecycle</span>
               </div>
               <div className="space-y-2">
                 {selectedOrder.milestones?.map((m, idx) => (
                   <div
                     key={idx}
-                    onClick={() => toggleMilestone(selectedOrder.id, idx)}
-                    className={`p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer transition text-xs ${
+                    className={`p-2.5 rounded-xl border flex items-center gap-3 transition text-xs ${
                       m.completed
                         ? 'bg-emerald-950/40 border-emerald-500/40 text-slate-200'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400'
                     }`}
                   >
                     <div className={`w-4 h-4 rounded-full flex items-center justify-center border ${
@@ -344,12 +496,33 @@ export const AdminOrders: React.FC = () => {
               </div>
             </div>
 
-            {/* Requirements & Notes */}
+            {/* Requirements & Internal Notes */}
             <div className="space-y-2 text-xs">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Order Requirements</span>
               <p className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-300 text-xs leading-relaxed">
                 {selectedOrder.requirements || 'Standard Turnkey Website Setup'}
               </p>
+
+              {selectedOrder.customerId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCustomerIdForAdmin(selectedOrder.customerId);
+                    setAdminTab('customers');
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer border border-slate-800"
+                >
+                  <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Inspect Full Intake Requirements Form</span>
+                </button>
+              )}
+
+              {selectedOrder.internalNotes && (
+                <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 text-[11px] text-slate-400">
+                  <span className="font-semibold text-slate-300 block mb-1">Internal Metadata & Log:</span>
+                  <span className="font-mono">{selectedOrder.internalNotes}</span>
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -453,3 +626,4 @@ export const AdminOrders: React.FC = () => {
     </div>
   );
 };
+

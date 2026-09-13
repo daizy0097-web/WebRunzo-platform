@@ -22,6 +22,7 @@ export const FloatingWhatsApp: React.FC = () => {
 
   // Sync with global isConciergeOpen if triggered from elsewhere
   const isOpen = isConciergeOpen || localIsOpen;
+
   const toggleOpen = () => {
     if (isConciergeOpen) {
       setIsConciergeOpen(false);
@@ -44,7 +45,11 @@ export const FloatingWhatsApp: React.FC = () => {
     e.preventDefault();
     const encoded = encodeURIComponent(message || settings.whatsAppDefaultMessage);
     const url = `https://wa.me/${cleanNumber}?text=${encoded}`;
-    addToast('info', 'Connecting to WhatsApp', `Opening direct concierge chat with WebRunzo (${settings.whatsAppNumber})...`);
+    addToast(
+      'info',
+      'Connecting to WhatsApp',
+      `Opening direct concierge chat with WebRunzo (${settings.whatsAppNumber})...`
+    );
     window.open(url, '_blank', 'noopener,noreferrer');
     closeDialog();
   };
@@ -90,19 +95,23 @@ export const FloatingWhatsApp: React.FC = () => {
                 <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-bold text-lg backdrop-blur shadow-sm">
                   <LifeBuoy className="w-5 h-5 text-white" />
                 </div>
+
                 <div>
                   <div className="font-extrabold text-sm flex items-center gap-2">
                     <span>Support & Concierge</span>
+
                     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBadgeBg}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${availability.dotColor} ${availability.dotPulse ? 'animate-pulse' : ''}`}></span>
                       {availability.status}
                     </span>
                   </div>
+
                   <div className="text-[11px] text-white/90 font-medium">
                     WebRunzo Dedicated Assistance Desk
                   </div>
                 </div>
               </div>
+
               <button
                 id="btn-close-concierge-modal"
                 type="button"
@@ -120,7 +129,10 @@ export const FloatingWhatsApp: React.FC = () => {
                 <Clock className="w-3 h-3 text-white/70" />
                 <span>{availability.hoursSummary}</span>
               </div>
-              <span className="font-mono text-white/90">{availability.currentTimeFormatted}</span>
+
+              <span className="font-mono text-white/90">
+                {availability.currentTimeFormatted}
+              </span>
             </div>
           </div>
 
@@ -128,13 +140,21 @@ export const FloatingWhatsApp: React.FC = () => {
           <div className="p-4 bg-slate-50 space-y-3 max-h-[75vh] overflow-y-auto">
             <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-xs text-slate-700 shadow-sm leading-relaxed">
               {availability.status === 'Online' && (
-                <>👋 <strong>Welcome to WebRunzo Concierge!</strong> Our engineers and support webmasters are currently <strong>Online</strong>. Need a custom template consultation, turnaround estimate, or site maintenance? Connect instantly below.</>
+                <>
+                  👋 <strong>Welcome to WebRunzo Concierge!</strong> Our engineers and support webmasters are currently <strong>Online</strong>. Need a custom template consultation, turnaround estimate, or site maintenance? Connect instantly below.
+                </>
               )}
+
               {availability.status === 'Away' && (
-                <>👋 <strong>Welcome to WebRunzo Concierge!</strong> Our team is currently <strong>Away</strong> on a brief shift transition. Leave your message below and we will reply within ~15 minutes.</>
+                <>
+                  👋 <strong>Welcome to WebRunzo Concierge!</strong> Our team is currently <strong>Away</strong> on a brief shift transition. Leave your message below and we will reply within ~15 minutes.
+                </>
               )}
+
               {availability.status === 'Offline' && (
-                <>👋 <strong>Welcome to WebRunzo Concierge!</strong> We are currently <strong>Offline</strong> outside regular scheduled hours ({availability.hoursSummary}). Send your request below and we will reply first thing on the next business day.</>
+                <>
+                  👋 <strong>Welcome to WebRunzo Concierge!</strong> We are currently <strong>Offline</strong> outside regular scheduled hours ({availability.hoursSummary}). Send your request below and we will reply first thing on the next business day.
+                </>
               )}
             </div>
 
@@ -145,6 +165,7 @@ export const FloatingWhatsApp: React.FC = () => {
                   <PhoneCall className="w-3 h-3 text-emerald-600" />
                   <span>WhatsApp Hotline</span>
                 </div>
+
                 <div className="font-bold text-slate-800 text-[11px] mt-1 font-mono truncate">
                   {settings.whatsAppNumber}
                 </div>
@@ -155,6 +176,7 @@ export const FloatingWhatsApp: React.FC = () => {
                   <Mail className="w-3 h-3 text-indigo-600" />
                   <span>Support Email</span>
                 </div>
+
                 <div className="font-bold text-slate-800 text-[11px] mt-1 truncate">
                   {settings.supportEmail}
                 </div>
@@ -163,9 +185,13 @@ export const FloatingWhatsApp: React.FC = () => {
 
             {/* Concierge Message Form */}
             <form onSubmit={handleSendMessage} className="space-y-2.5 pt-1">
-              <label htmlFor="concierge-input-message" className="block text-[11px] font-bold text-slate-700">
+              <label
+                htmlFor="concierge-input-message"
+                className="block text-[11px] font-bold text-slate-700"
+              >
                 Direct Message to Concierge Desk:
               </label>
+
               <textarea
                 id="concierge-input-message"
                 value={message}
@@ -187,7 +213,9 @@ export const FloatingWhatsApp: React.FC = () => {
                 }`}
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>Open Instant WhatsApp Chat ({availability.status})</span>
+                <span>
+                  Open Instant WhatsApp Chat ({availability.status})
+                </span>
               </button>
             </form>
 
@@ -196,7 +224,9 @@ export const FloatingWhatsApp: React.FC = () => {
                 <ShieldCheck className="w-3 h-3 text-emerald-600" />
                 Verified Concierge
               </span>
+
               <span>•</span>
+
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-indigo-600" />
                 24/7 Queue Monitoring
@@ -206,35 +236,31 @@ export const FloatingWhatsApp: React.FC = () => {
         </div>
       )}
 
-      {/* Floating "Support & Concierge" Button - Crisp, high-contrast, visible text on desktop & mobile */}
+      {/* Compact Floating Support Button */}
       <button
         id="btn-support-concierge"
         data-testid="btn-support-concierge"
         type="button"
         onClick={toggleOpen}
-        className="group relative inline-flex items-center gap-2.5 px-4 sm:px-5 py-3 sm:py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-2xl shadow-emerald-950/50 hover:shadow-emerald-600/50 transition-all duration-150 active:scale-95 cursor-pointer touch-manipulation select-none border border-emerald-400/30"
+        className="group relative inline-flex items-center justify-center gap-2 w-11 h-11 md:w-auto md:h-auto md:px-3.5 md:py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs shadow-xl shadow-emerald-950/40 hover:shadow-emerald-600/40 transition-all duration-150 active:scale-95 cursor-pointer touch-manipulation select-none border border-emerald-400/30"
         aria-label="Support & Concierge"
         title="Support & Concierge Desk"
       >
-        {/* Pulsing Status Dot */}
-        <span className="relative flex h-2.5 w-2.5 shrink-0">
+        {/* Pulsing Status Dot - Desktop only */}
+        <span className="relative hidden md:flex h-2 w-2 shrink-0">
           {availability.dotPulse && (
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
           )}
-          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${triggerDotColor}`}></span>
+
+          <span className={`relative inline-flex rounded-full h-2 w-2 ${triggerDotColor}`}></span>
         </span>
 
-        {/* Icon */}
-        <LifeBuoy className="w-4 h-4 text-white shrink-0 group-hover:rotate-45 transition-transform duration-300" />
+        {/* Support Icon */}
+        <LifeBuoy className="w-5 h-5 md:w-4 md:h-4 text-white shrink-0 group-hover:rotate-45 transition-transform duration-300" />
 
-        {/* Clearly Visible Label Text */}
-        <span className="font-extrabold text-white tracking-normal whitespace-nowrap text-xs sm:text-sm">
-          Support & Concierge
-        </span>
-
-        {/* Small Status Tag */}
-        <span className="hidden sm:inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-black/20 text-emerald-100 uppercase tracking-wider">
-          {availability.status}
+        {/* Compact Label - Desktop/PC only */}
+        <span className="hidden md:inline font-extrabold text-white tracking-normal whitespace-nowrap">
+          Support
         </span>
       </button>
     </aside>

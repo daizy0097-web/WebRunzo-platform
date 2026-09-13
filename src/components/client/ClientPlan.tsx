@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatINR } from '../../utils/formatters';
+import { supabase } from '../../lib/supabase';
 import { 
   CreditCard, 
   Check, 
@@ -12,18 +13,166 @@ import {
   Lock 
 } from 'lucide-react';
 
+declare global {
+  interface Window {
+    Razorpay?: any;
+  }
+}
+
 export const ClientPlan: React.FC = () => {
   const { activeCustomer, plans, settings, updateCustomer, showToast } = useApp();
 
   if (!activeCustomer) return null;
 
+  const [isProcessing, setIsProcessing] = React.useState(false);
   const currentPlan = plans.find((p) => p.id === activeCustomer.planId);
 
-  const handleUpgradePlan = (newPlanId: string) => {
-    updateCustomer(activeCustomer.id, {
-      planId: newPlanId,
-    });
-    showToast('Your subscription package has been upgraded successfully!', 'success');
+  const handleUpgradePlan = async (newPlanId: string) => {
+    setIsProcessing(true);
+    showToast('Initializing secure Razorpay payment order...', 'info');
+
+    try {
+      const { data: { session: sbSession } } = await supabase.auth.getSession();
+      const token = sbSession?.access_token;
+
+      // 1. Request Razorpay order from backend API (server-side pricing, key validation)
+      const res = await fetch('/api/payments/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          planId: newPlanId,
+          customerId: activeCustomer.id,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to initialize payment order.');
+      }
+
+      // If Razorpay keys aren't configured on server, order is registered in DB as Pending
+      if (!data.razorpayConfigured || data.code === 'RAZORPAY_NOT_CONFIGURED') {
+        showToast(
+          data.message || 'Order created in database. Payment gateway is unconfigured on this server.',
+          'info'
+        );
+        setIsProcessing(false);
+        return;
+      }
+
+      // Check if Razorpay script is loaded in browser
+      if (typeof window.Razorpay === 'undefined') {
+        showToast('Razorpay checkout SDK is loading. Please try again in a moment.', 'warning');
+        setIsProcessing(false);
+        return;
+      }
+
+      // 2. Open official Razorpay modal
+      const options = {
+        key: data.keyId,
+        amount: data.amount,
+        currency: data.currency || 'INR',
+        name: 'WebRunzo Platform',
+        description: `${data.planName} Annual Retainer`,
+        order_id: data.orderId,
+        prefill: {
+          name: data.customer?.name || activeCustomer.name,
+          email: data.customer?.email || activeCustomer.email,
+          contact: data.customer?.phone || activeCustomer.phone,
+        },
+        theme: {
+          color: '#4f46e5',
+        },
+        modal: {
+          ondismiss: () => {
+            setIsProcessing(false);
+            showToast('Payment checkout window closed.', 'info');
+          },
+        },
+        handler: async (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) => {
+          showToast('Payment received! Verifying cryptographic signature on server...', 'info');
+
+          try {
+            // 3. Cryptographically verify signature on server before granting access
+            const verifyRes = await fetch('/api/payments/verify-payment', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                planId: newPlanId,
+                customerId: activeCustomer.id,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+
+            if (!verifyRes.ok || !verifyData.success || !verifyData.verified) {
+              throw new Error(verifyData.error || 'Payment signature verification failed.');
+            }
+
+            // Update client local state aligned with customers schema
+            const todayDate = new Date().toISOString().split('T')[0];
+            const nextExpiryDate = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
+            const isVipTier = newPlanId === 'plan-business';
+
+            updateCustomer(activeCustomer.id, {
+              planId: newPlanId,
+              paymentStatus: 'Paid',
+              accountStatus: 'Active',
+              subscriptionState: 'ACTIVE',
+              planStartDate: todayDate,
+              planExpiryDate: nextExpiryDate,
+              autoRenew: true,
+              websiteStatus: 'Live',
+              clientTier: isVipTier ? 'premium' : (activeCustomer.clientTier || 'normal'),
+              slaLevel: isVipTier
+                ? '2-Hour VIP Priority SLA'
+                : newPlanId === 'plan-pro'
+                ? 'Priority 12h'
+                : 'Standard 24h',
+            });
+
+            showToast(
+              `Success! You have been upgraded to the ${data.planName}. Subscription active.`,
+              'success'
+            );
+          } catch (vErr: any) {
+            console.error('Error verifying payment on server:', vErr);
+            showToast(vErr.message || 'Payment signature verification failed.', 'error');
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', (resp: any) => {
+        setIsProcessing(false);
+        console.error('Razorpay payment failed:', resp.error);
+        showToast(
+          `Payment failed: ${resp.error?.description || resp.error?.reason || 'Transaction declined'}`,
+          'error'
+        );
+      });
+
+      rzp.open();
+    } catch (err: any) {
+      showToast(err.message || 'Payment checkout unavailable. Razorpay integration is unconfigured.', 'error');
+      setIsProcessing(false);
+    }
   };
 
   return (

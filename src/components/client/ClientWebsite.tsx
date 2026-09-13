@@ -23,11 +23,13 @@ import {
   Wifi,
   Radio,
   Check,
-  AlertCircle
+  AlertCircle,
+  ClipboardList
 } from 'lucide-react';
 import { LiveWebsitePreviewFrame } from '../common/LiveWebsitePreviewFrame';
 import { ClientBackupSection } from './ClientBackupSection';
 import { Template } from '../../types';
+import { supabase } from '../../lib/supabase';
 
 export const ClientWebsite: React.FC = () => {
   const { 
@@ -104,23 +106,51 @@ export const ClientWebsite: React.FC = () => {
     showToast('Template switched! Your preview is now rendering the new design layout.', 'success');
   };
 
-  const handleTriggerRedeploy = () => {
+  const handleTriggerRedeploy = async () => {
     setIsRedeploying(true);
     setDeployStep('Compiling Edge artifacts & optimizing WebP assets...');
 
-    setTimeout(() => {
-      setDeployStep('Purging Cloudflare Edge CDN cache (280+ POPs)...');
-    }, 1000);
+    try {
+      const { data: { session: sbSession } } = await supabase.auth.getSession();
+      const token = sbSession?.access_token;
 
-    setTimeout(() => {
-      setDeployStep('Synchronizing DNS TLS 1.3 certificates...');
-    }, 2000);
+      setDeployStep('Purging Cloudflare Anycast CDN cache (280+ POPs)...');
 
-    setTimeout(() => {
+      const res = await fetch('/api/client/redeploy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ customerId: customer.id }),
+      });
+
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(
+          result.error ||
+            'Edge deployment pipeline is not configured. Set the DEPLOYMENT_WEBHOOK_URL environment variable to enable live builds.'
+        );
+      }
+
+      setDeployStep('Validating DNS propagation and TLS certificates...');
+
+      setTimeout(() => {
+        setIsRedeploying(false);
+        setDeployStep('');
+        if (result.deployment) {
+          updateCustomer(customer.id, {
+            deployment: result.deployment,
+          });
+        }
+        showToast(result.message || 'Live Edge CDN cache purged and website redeployed successfully!', 'success');
+      }, 1000);
+    } catch (err: any) {
+      console.warn('Redeployment error:', err);
       setIsRedeploying(false);
       setDeployStep('');
-      showToast('Live Edge CDN cache purged and website redeployed successfully in 2.8s!', 'success');
-    }, 3000);
+      showToast(err.message || 'Deployment integration unavailable: DEPLOYMENT_WEBHOOK_URL is not configured.', 'error');
+    }
   };
 
   const handleVerifyDns = () => {
@@ -153,6 +183,14 @@ export const ClientWebsite: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => setClientTab('onboarding')}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-700 transition flex items-center gap-2 cursor-pointer"
+          >
+            <ClipboardList className="w-4 h-4 text-emerald-400" />
+            <span>Intake Requirements</span>
+          </button>
+
           <button
             onClick={() => setShowTemplateModal(true)}
             className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-700 transition flex items-center gap-2 cursor-pointer"

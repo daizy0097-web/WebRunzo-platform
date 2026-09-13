@@ -24,7 +24,8 @@ import {
   Zap,
   Clock,
   AlertTriangle,
-  Bell
+  Bell,
+  ClipboardList
 } from 'lucide-react';
 import { ClientNotificationCenter } from './ClientNotificationCenter';
 
@@ -74,8 +75,25 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
     setClientTab(id);
   };
 
-  const baseNavItems: { id: ClientTab; label: string; icon: React.ElementType; badge?: number; alert?: boolean }[] = [
+  const onboardingStatus = customer?.customContent?.onboarding?.status || 'Not Started';
+
+  const baseNavItems: { 
+    id: ClientTab; 
+    label: string; 
+    icon: React.ElementType; 
+    badge?: number; 
+    alert?: boolean;
+    statusBadge?: string;
+    statusType?: 'emerald' | 'sky' | 'amber';
+  }[] = [
     { id: 'dashboard', label: 'My Portal Home', icon: LayoutDashboard },
+    { 
+      id: 'onboarding', 
+      label: 'Website Requirements', 
+      icon: ClipboardList, 
+      statusBadge: onboardingStatus === 'Submitted' ? 'Submitted' : onboardingStatus === 'In Progress' ? 'Draft' : 'Pending',
+      statusType: onboardingStatus === 'Submitted' ? 'emerald' : onboardingStatus === 'In Progress' ? 'sky' : 'amber'
+    },
     { id: 'website', label: 'Website & Content', icon: Globe },
     { id: 'storage', label: 'Cloud Storage & Files', icon: HardDrive, alert: storageNearOrFull },
     { id: 'orders', label: 'My Orders & Progress', icon: ShoppingBag, badge: myOrdersCount > 0 ? myOrdersCount : undefined },
@@ -178,6 +196,17 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
                   <span>{item.label}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {item.statusBadge && (
+                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border uppercase tracking-wider ${
+                      item.statusType === 'emerald'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : item.statusType === 'sky'
+                        ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                        : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    }`}>
+                      {item.statusBadge}
+                    </span>
+                  )}
                   {item.alert && (
                     <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Storage alert" />
                   )}
@@ -331,7 +360,20 @@ export const ClientLayout: React.FC<Props> = ({ children }) => {
               }`}
             >
               <span>{item.label}</span>
-              {item.badge && <span className="bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full">{item.badge}</span>}
+              <div className="flex items-center gap-1.5">
+                {item.statusBadge && (
+                  <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border uppercase tracking-wider ${
+                    item.statusType === 'emerald'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : item.statusType === 'sky'
+                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                      : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  }`}>
+                    {item.statusBadge}
+                  </span>
+                )}
+                {item.badge && <span className="bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full">{item.badge}</span>}
+              </div>
             </button>
           ))}
           {isVip && (

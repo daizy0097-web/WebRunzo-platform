@@ -7,7 +7,7 @@ import { AdminCustomerProfile } from './AdminCustomerProfile';
 import { AdminOrders } from './AdminOrders';
 import { AdminWebsites } from './AdminWebsites';
 import { AdminBackups } from './AdminBackups';
-import { AdminSubscriptions } from './AdminSubscriptions';
+import { AdminCustomerTiers } from './AdminCustomerTiers';
 import { AdminPayments } from './AdminPayments';
 import { AdminTemplates } from './AdminTemplates';
 import { AdminEnquiries } from './AdminEnquiries';
@@ -33,7 +33,7 @@ export const AdminHome: React.FC = () => {
       {adminTab === 'websites' && <AdminWebsites />}
       {adminTab === 'storage' && <AdminStorage />}
       {adminTab === 'backups' && <AdminBackups />}
-      {adminTab === 'subscriptions' && <AdminSubscriptions />}
+      {(adminTab === 'subscriptions' || adminTab === 'customer-tiers') && <AdminCustomerTiers />}
       {adminTab === 'payments' && <AdminPayments />}
       {adminTab === 'templates' && <AdminTemplates />}
       {adminTab === 'enquiries' && <AdminEnquiries />}

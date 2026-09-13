@@ -6,7 +6,25 @@ export type WebsiteStatus = 'Draft' | 'In Progress' | 'Live' | 'Suspended' | 'Ex
 export type PaymentStatus = 'Paid' | 'Pending' | 'Failed' | 'Refunded';
 export type CustomerStatus = 'Active' | 'Pending' | 'Expired';
 export type EnquiryStatus = 'New' | 'Contacted' | 'Converted' | 'Closed';
-export type OrderStatus = 'New' | 'Pending' | 'In Progress' | 'Completed' | 'Cancelled';
+export type OrderStatus = 'New' | 'Pending' | 'In Progress' | 'Completed' | 'Cancelled' | 'Submitted' | 'Accepted' | 'Review' | 'Live';
+
+export type ProjectStatus = 'Submitted' | 'Accepted' | 'In Progress' | 'Review' | 'Live';
+
+export const PROJECT_LIFECYCLE_STEPS: ProjectStatus[] = [
+  'Submitted',
+  'Accepted',
+  'In Progress',
+  'Review',
+  'Live',
+];
+
+export const ALLOWED_PROJECT_TRANSITIONS: Record<ProjectStatus, ProjectStatus[]> = {
+  'Submitted': ['Accepted'],
+  'Accepted': ['In Progress'],
+  'In Progress': ['Review'],
+  'Review': ['In Progress', 'Live'],
+  'Live': [],
+};
 
 export type TemplateCategory =
   | 'Business'
@@ -175,13 +193,60 @@ export interface Plan {
   tier: ClientTier;
 }
 
+export type OnboardingStatus = 'Not Started' | 'In Progress' | 'Submitted';
+
+export interface ClientOnboardingData {
+  status: OnboardingStatus;
+  startedAt?: string;
+  submittedAt?: string;
+  updatedAt?: string;
+
+  // Business
+  businessName: string;
+  businessCategory?: string;
+  businessDescription?: string;
+  contactEmail: string;
+  contactPhone: string;
+  address: string;
+
+  // Branding
+  logoUrl?: string;
+  logoText?: string;
+  primaryColor: string;
+  secondaryColor?: string;
+  preferredVisualStyles?: string[];
+
+  // Website Specs
+  selectedTemplateId?: string;
+  requiredSections?: string[];
+  headline?: string;
+  tagline?: string;
+  aboutText?: string;
+  servicesList?: { title: string; desc: string; icon?: string }[];
+  socialLinks?: {
+    instagram?: string;
+    facebook?: string;
+    linkedin?: string;
+    twitter?: string;
+    whatsapp?: string;
+  };
+  customDomain?: string;
+
+  // Project Requirements
+  specialFeatures?: string[];
+  specialFeaturesNotes?: string;
+  additionalNotes?: string;
+}
+
 export interface ClientWebsiteContent {
   businessName: string;
   tagline: string;
   heroHeadline: string;
   heroSubhead: string;
   primaryColor: string;
+  secondaryColor?: string;
   logoText: string;
+  logoUrl?: string;
   contactEmail: string;
   contactPhone: string;
   address: string;
@@ -194,15 +259,16 @@ export interface ClientWebsiteContent {
     twitter?: string;
     whatsapp?: string;
   };
+  onboarding?: ClientOnboardingData;
 }
 
 export interface Customer {
   id: string;
+  userId?: string;
   name: string;
   businessName: string;
   email: string;
   phone: string;
-  password?: string;
   clientTier: ClientTier;
   isTestAccount?: boolean;
   planId: string;
@@ -251,6 +317,7 @@ export interface Order {
   templateId: string;
   amount: number;
   status: OrderStatus;
+  projectStatus?: ProjectStatus;
   paymentStatus: PaymentStatus;
   date: string;
   deliveryDueDate: string;

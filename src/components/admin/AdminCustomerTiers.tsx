@@ -16,7 +16,7 @@ import {
   DollarSign 
 } from 'lucide-react';
 
-export const AdminSubscriptions: React.FC = () => {
+export const AdminCustomerTiers: React.FC = () => {
   const { 
     customers, 
     plans, 
@@ -187,7 +187,15 @@ export const AdminSubscriptions: React.FC = () => {
                 return (
                   <tr key={c.id} className="hover:bg-slate-800/40 transition">
                     <td className="p-4 pl-6">
-                      <div className="font-bold text-white text-sm">{c.businessName}</div>
+                      <div 
+                        onClick={() => {
+                          setSelectedCustomerIdForAdmin(c.id);
+                          setAdminTab('customer-profile');
+                        }}
+                        className="font-bold text-white text-sm hover:text-emerald-400 cursor-pointer transition"
+                      >
+                        {c.businessName}
+                      </div>
                       <div className="text-[11px] text-slate-400">{c.name} • {c.email}</div>
                     </td>
 
@@ -258,3 +266,5 @@ export const AdminSubscriptions: React.FC = () => {
     </div>
   );
 };
+
+export const AdminSubscriptions = AdminCustomerTiers;
