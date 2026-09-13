@@ -116,22 +116,9 @@ app.use(
 
 // API: Health Check
 app.get('/api/health', (_req, res) => {
-  const adminCheck = getAdminClient();
-  const razorpay = getRazorpay();
-  const hasRazorpayWebhookSecret = !!(process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
-  const hasDeploymentWebhook = !!(process.env.DEPLOYMENT_WEBHOOK_URL || '').trim();
-
   res.json({
     status: 'ok',
     service: 'webrunzo-server',
-    hasServiceRoleKey: !!adminCheck.client,
-    serviceRoleStatus: adminCheck.client ? 'ready' : (adminCheck.code || 'missing'),
-    hasRazorpayKey: !!razorpay.client,
-    razorpayStatus: razorpay.client ? 'ready' : 'unconfigured',
-    hasRazorpayWebhookSecret,
-    razorpayWebhookStatus: hasRazorpayWebhookSecret ? 'ready' : 'unconfigured',
-    hasDeploymentWebhook,
-    deploymentStatus: hasDeploymentWebhook ? 'ready' : 'unconfigured',
     timestamp: new Date().toISOString(),
   });
 });
