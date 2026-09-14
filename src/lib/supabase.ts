@@ -1,7 +1,13 @@
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = 
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
+  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 
+  '';
+const supabaseAnonKey = 
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
+  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) || 
+  '';
 
 // Validate that credentials exist and are non-placeholder
 export const isSupabaseConfigured = Boolean(
@@ -53,7 +59,10 @@ export function getAppBaseUrl(): string {
     return window.location.origin.replace(/\/+$/, '');
   }
 
-  const envUrl = (import.meta.env.VITE_APP_URL as string) || '';
+  const envUrl = 
+    (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_APP_URL as string)) ||
+    (typeof process !== 'undefined' && process.env?.VITE_APP_URL) || 
+    '';
   if (
     envUrl &&
     typeof envUrl === 'string' &&

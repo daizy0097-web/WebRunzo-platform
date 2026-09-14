@@ -323,7 +323,7 @@ interface AppContextType {
   isLoadingData: boolean;
 }
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
+export const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // Helper to compute URL from state
 function getUrlForState(exp: Experience, pubPage: PublicPage, cTab: ClientTab, aTab: AdminTab): string {

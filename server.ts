@@ -105,6 +105,28 @@ const getRazorpay = (): { client: Razorpay | null; keyId: string; keySecret: str
   return { client: razorpayClient, keyId, keySecret };
 };
 
+// Official WebRunzo Plan Catalog (Pricing determined strictly server-side in INR Paise)
+const PLAN_CATALOG: Record<string, { name: string; amountPaise: number; amountINR: number; description: string }> = {
+  'plan-starter': {
+    name: 'Starter Plan',
+    amountPaise: 299900,
+    amountINR: 2999,
+    description: 'Single-page responsive turnkey website, managed hosting, SSL, and monthly webmaster updates.',
+  },
+  'plan-pro': {
+    name: 'Professional Plan',
+    amountPaise: 499900,
+    amountINR: 4999,
+    description: 'Up to 5 custom pages, CDN acceleration, daily backups, SEO optimization, and priority turnaround.',
+  },
+  'plan-business': {
+    name: 'Business VIP Plan',
+    amountPaise: 899900,
+    amountINR: 8999,
+    description: 'Unlimited revisions, custom database integrations, dedicated account specialist, and 1-day turnaround.',
+  },
+};
+
 // Middleware: JSON parser with rawBody retention for Razorpay Webhook signature verification
 app.use(
   express.json({
@@ -185,11 +207,11 @@ app.post('/api/admin/convert-lead', async (req, res) => {
       .maybeSingle();
 
     if (enqFetchErr) {
-      console.error('Database error during enquiry lookup:', enqFetchErr.message);
+      console.error('Database error during enquiry lookup:', enqFetchErr);
       return res.status(500).json({
         success: false,
         code: 'ENQUIRY_LOOKUP_ERROR',
-        error: `Database error during enquiry lookup: ${enqFetchErr.message}`,
+        error: 'Database operation failed during enquiry lookup. Please try again.',
       });
     }
 
@@ -434,11 +456,10 @@ app.post('/api/admin/convert-lead', async (req, res) => {
       const isMissingRpc = rpcError.code === 'PGRST202';
       return res.status(isMissingRpc ? 501 : 500).json({
         success: false,
-        code: isMissingRpc ? 'RPC_MIGRATION_REQUIRED' : rpcError.code || 'RPC_EXECUTION_ERROR',
+        code: isMissingRpc ? 'RPC_MIGRATION_REQUIRED' : 'DATABASE_OPERATION_FAILED',
         error: isMissingRpc
           ? 'Database conversion function "convert_enquiry_to_customer_atomic" is not installed in the schema cache. Please execute migration 20260915_atomic_lead_conversion.sql in your Supabase SQL Editor.'
-          : `Database conversion failed: ${rpcError.message}`,
-        details: rpcError.details,
+          : 'Database conversion failed. Please try again.',
       });
     }
 
@@ -743,7 +764,7 @@ app.post('/api/admin/orders/update-status', async (req, res) => {
       return res.status(500).json({
         success: false,
         code: 'DB_UPDATE_FAILED',
-        error: `Database update failed: ${updateOrderErr.message}`,
+        error: 'Database update failed. Please try again.',
       });
     }
 
@@ -899,30 +920,8 @@ app.post('/api/payments/create-order', async (req, res) => {
       });
     }
 
-    // Official WebRunzo Plan Catalog (Pricing determined strictly server-side in INR Paise)
-    const planCatalog: Record<string, { name: string; amountPaise: number; amountINR: number; description: string }> = {
-      'plan-starter': {
-        name: 'Starter Plan',
-        amountPaise: 299900,
-        amountINR: 2999,
-        description: 'Single-page responsive turnkey website, managed hosting, SSL, and monthly webmaster updates.',
-      },
-      'plan-pro': {
-        name: 'Professional Plan',
-        amountPaise: 499900,
-        amountINR: 4999,
-        description: 'Up to 5 custom pages, CDN acceleration, daily backups, SEO optimization, and priority turnaround.',
-      },
-      'plan-business': {
-        name: 'Business VIP Plan',
-        amountPaise: 899900,
-        amountINR: 8999,
-        description: 'Unlimited revisions, custom database integrations, dedicated account specialist, and 1-day turnaround.',
-      },
-    };
-
-    const targetPlan = planCatalog[req.body.planId] || planCatalog['plan-pro'];
-    const resolvedPlanId = planCatalog[req.body.planId] ? req.body.planId : 'plan-pro';
+    const targetPlan = PLAN_CATALOG[req.body.planId] || PLAN_CATALOG['plan-pro'];
+    const resolvedPlanId = PLAN_CATALOG[req.body.planId] ? req.body.planId : 'plan-pro';
 
     // SERVER-AUTHORITATIVE ORDER CREATION:
     // Generate order record strictly using verified customer identity and server-side pricing.
@@ -972,7 +971,7 @@ app.post('/api/payments/create-order', async (req, res) => {
       return res.status(500).json({
         success: false,
         code: 'ORDER_CREATION_FAILED',
-        error: `Failed to create database order: ${orderInsertErr.message}`,
+        error: 'Failed to create database order. Please try again.',
       });
     }
 
@@ -1106,10 +1105,12 @@ app.post('/api/payments/verify-payment', async (req, res) => {
       .update(body.toString())
       .digest('hex');
 
-    const isSignatureValid = crypto.timingSafeEqual(
-      Buffer.from(expectedSignature),
-      Buffer.from(razorpay_signature)
-    );
+    const expectedBuffer = Buffer.from(expectedSignature);
+    const receivedBuffer = Buffer.from(razorpay_signature);
+
+    const isSignatureValid =
+      expectedBuffer.length === receivedBuffer.length &&
+      crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
 
     if (!isSignatureValid) {
       return res.status(400).json({
@@ -1122,7 +1123,6 @@ app.post('/api/payments/verify-payment', async (req, res) => {
     // Signature is cryptographically verified!
     // Fetch payment details directly from Razorpay to verify payment status and amount
     const paymentDetails = await razorpay.payments.fetch(razorpay_payment_id);
-    const amountINR = Number(paymentDetails.amount) / 100;
     const paymentMethod = paymentDetails.method ? `Razorpay (${paymentDetails.method.toUpperCase()})` : 'Razorpay (UPI / Card)';
 
     const callerClient = getCallerClient(token);
@@ -1180,99 +1180,233 @@ app.post('/api/payments/verify-payment', async (req, res) => {
       });
     }
 
-    const targetPlanId = planId || 'plan-pro';
-    const nowIso = new Date().toISOString().split('T')[0];
+    // =========================================================================
+    // DEFENSE-IN-DEPTH: SERVER-AUTHORITATIVE PLAN & ORDER VALIDATION
+    // Never trust req.body.planId. Derive and cross-validate plan strictly from:
+    // 1. Razorpay Order Entity (and its server-attached notes)
+    // 2. Server-side Plan Catalog
+    // 3. WebRunzo Database Order Record (public.orders)
+    // =========================================================================
 
-    // Idempotent database record updates using caller client (or admin client if available)
+    // 1. Fetch Razorpay Order
+    let rzpOrder: any;
+    try {
+      rzpOrder = await razorpay.orders.fetch(razorpay_order_id);
+    } catch (orderFetchErr) {
+      console.error('Failed to fetch Razorpay order for verification:', orderFetchErr);
+      return res.status(404).json({
+        success: false,
+        code: 'RAZORPAY_ORDER_NOT_FOUND',
+        error: 'The specified payment order could not be retrieved from the payment gateway.',
+      });
+    }
+
+    const orderNotes = rzpOrder?.notes || {};
+    const authoritativePlanId = orderNotes.planId;
+    const dbOrderId = orderNotes.orderId;
+    const notesCustomerId = orderNotes.customerId;
+
+    // Validate notes metadata integrity
+    if (!authoritativePlanId || !PLAN_CATALOG[authoritativePlanId]) {
+      console.error('Invalid or missing planId in Razorpay order notes:', authoritativePlanId);
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_ORDER_METADATA',
+        error: 'Payment order metadata does not correspond to a recognized plan.',
+      });
+    }
+
+    if (!dbOrderId) {
+      console.error('Missing dbOrderId in Razorpay order notes:', orderNotes);
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_ORDER_METADATA',
+        error: 'Payment order is missing linked internal order reference.',
+      });
+    }
+
+    // Validate customer ownership
+    if (notesCustomerId && notesCustomerId !== targetCustomerId && profile.role !== 'admin') {
+      console.error(`Customer mismatch: notes=${notesCustomerId}, authenticated=${targetCustomerId}`);
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        error: 'Payment order does not belong to the authenticated client account.',
+      });
+    }
+
+    const catalogPlan = PLAN_CATALOG[authoritativePlanId];
+
+    // Validate Razorpay order amount matches server plan catalog
+    if (Number(rzpOrder.amount) !== catalogPlan.amountPaise) {
+      console.error(`Razorpay order amount mismatch: order=${rzpOrder.amount}, catalog=${catalogPlan.amountPaise}`);
+      return res.status(400).json({
+        success: false,
+        code: 'AMOUNT_MISMATCH',
+        error: 'Order payment amount does not match the authoritative catalog price.',
+      });
+    }
+
+    // Validate Razorpay payment amount matches Razorpay order amount
+    if (Number(paymentDetails.amount) !== Number(rzpOrder.amount)) {
+      console.error(`Payment amount mismatch: payment=${paymentDetails.amount}, order=${rzpOrder.amount}`);
+      return res.status(400).json({
+        success: false,
+        code: 'AMOUNT_MISMATCH',
+        error: 'Paid amount does not match the authorized order amount.',
+      });
+    }
+
+    // Validate payment status
+    if (paymentDetails.status !== 'captured' && paymentDetails.status !== 'authorized') {
+      console.error(`Invalid payment status: ${paymentDetails.status}`);
+      return res.status(400).json({
+        success: false,
+        code: 'PAYMENT_NOT_CAPTURED',
+        error: 'Payment transaction is not in a captured or authorized state.',
+      });
+    }
+
     const adminCheck = getAdminClient();
     const db = adminCheck.client || callerClient;
 
-    if (targetCustomerId) {
-      // 1. Check if payment was already recorded to guarantee idempotence
-      const { data: existingPayment } = await db
-        .from('payments')
-        .select('id')
-        .eq('transaction_id', razorpay_payment_id)
-        .maybeSingle();
+    // 2. Cross-verify with public.orders database record
+    const { data: dbOrder, error: dbOrderErr } = await db
+      .from('orders')
+      .select('*')
+      .eq('id', dbOrderId)
+      .eq('customer_id', targetCustomerId)
+      .maybeSingle();
 
-      if (!existingPayment) {
-        const todayDate = new Date().toISOString().split('T')[0];
-        const nextExpiryDate = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
-        const isVipTier = targetPlanId === 'plan-business';
+    if (dbOrderErr) {
+      console.error('Database error fetching order during payment verification:', dbOrderErr);
+      return res.status(500).json({
+        success: false,
+        code: 'DATABASE_ERROR',
+        error: 'Database operation failed during order verification. Please try again.',
+      });
+    }
 
-        // 2. Update customer subscription state directly in public.customers
-        const customerSubscriptionUpdates: Record<string, any> = {
-          plan_id: targetPlanId,
-          payment_status: 'Paid',
-          account_status: 'Active',
-          subscription_state: 'ACTIVE',
-          plan_start_date: todayDate,
-          plan_expiry_date: nextExpiryDate,
-          auto_renew: true,
-          grace_period_end_date: null,
-          website_status: 'Live',
-          updated_at: new Date().toISOString(),
-        };
+    if (!dbOrder) {
+      console.error(`Database order not found: id=${dbOrderId}, customer=${targetCustomerId}`);
+      return res.status(404).json({
+        success: false,
+        code: 'ORDER_NOT_FOUND',
+        error: 'The internal order associated with this payment was not found.',
+      });
+    }
 
-        if (isVipTier) {
-          customerSubscriptionUpdates.client_tier = 'premium';
-          customerSubscriptionUpdates.sla_level = '2-Hour VIP Priority SLA';
-        } else if (targetPlanId === 'plan-pro') {
-          customerSubscriptionUpdates.sla_level = 'Priority 12h';
-        } else {
-          customerSubscriptionUpdates.sla_level = 'Standard 24h';
-        }
+    // Ensure plan and amount match the database order
+    if (dbOrder.plan_id !== authoritativePlanId) {
+      console.error(`Order plan mismatch: db=${dbOrder.plan_id}, rzpNotes=${authoritativePlanId}`);
+      return res.status(400).json({
+        success: false,
+        code: 'PLAN_MISMATCH',
+        error: 'Order plan specification does not match the database order.',
+      });
+    }
 
-        await db
-          .from('customers')
-          .update(customerSubscriptionUpdates)
-          .eq('id', targetCustomerId);
+    if (Number(dbOrder.amount) !== catalogPlan.amountINR) {
+      console.error(`Order amount mismatch: db=${dbOrder.amount}, catalog=${catalogPlan.amountINR}`);
+      return res.status(400).json({
+        success: false,
+        code: 'AMOUNT_MISMATCH',
+        error: 'Order amount does not match the authoritative catalog amount.',
+      });
+    }
 
-        // 3. Align customer storage tier quota
-        const basePlanLimitGB = isVipTier ? 15 : targetPlanId === 'plan-pro' ? 10 : 5;
-        await db
-          .from('customer_storage')
-          .update({
-            base_plan_limit_gb: basePlanLimitGB,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('customer_id', targetCustomerId);
+    const amountINR = catalogPlan.amountINR;
+    const nowIso = new Date().toISOString().split('T')[0];
 
-        // 4. Record verified payment in payments ledger
-        await db.from('payments').insert({
-          id: `pay-rzp-${Date.now()}`,
-          transaction_id: razorpay_payment_id,
-          invoice_number: `INV-RZP-${Date.now().toString().slice(-6)}`,
-          customer_id: targetCustomerId,
-          customer_name: custRecord?.name || profile?.full_name || 'Valued Client',
-          business_name: custRecord?.business_name || 'Client Business',
-          amount: amountINR,
-          plan_name: targetPlanId,
-          date: nowIso,
-          status: 'Paid',
-          method: paymentMethod,
-        });
+    // Idempotency: Check if payment has already been recorded in payments ledger
+    const { data: existingPayment } = await db
+      .from('payments')
+      .select('id')
+      .eq('transaction_id', razorpay_payment_id)
+      .maybeSingle();
 
-        // 5. Update orders for this customer to Paid
-        if (req.body.orderId) {
-          await db
-            .from('orders')
-            .update({
-              payment_status: 'Paid',
-              status: 'In Progress',
-            })
-            .eq('id', req.body.orderId)
-            .eq('customer_id', targetCustomerId);
-        } else {
-          await db
-            .from('orders')
-            .update({
-              payment_status: 'Paid',
-              status: 'In Progress',
-            })
-            .eq('customer_id', targetCustomerId);
-        }
+    if (!existingPayment) {
+      // If DB order was expected to be Pending, proceed with atomic updates
+      const todayDate = new Date().toISOString().split('T')[0];
+      const nextExpiryDate = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
+      const isVipTier = authoritativePlanId === 'plan-business';
+
+      // 1. Update customer subscription state directly in public.customers
+      const customerSubscriptionUpdates: Record<string, any> = {
+        plan_id: authoritativePlanId,
+        payment_status: 'Paid',
+        account_status: 'Active',
+        subscription_state: 'ACTIVE',
+        plan_start_date: todayDate,
+        plan_expiry_date: nextExpiryDate,
+        auto_renew: true,
+        grace_period_end_date: null,
+        website_status: 'Live',
+        updated_at: new Date().toISOString(),
+      };
+
+      if (isVipTier) {
+        customerSubscriptionUpdates.client_tier = 'premium';
+        customerSubscriptionUpdates.sla_level = '2-Hour VIP Priority SLA';
+      } else if (authoritativePlanId === 'plan-pro') {
+        customerSubscriptionUpdates.sla_level = 'Priority 12h';
+      } else {
+        customerSubscriptionUpdates.sla_level = 'Standard 24h';
       }
+
+      const { error: custUpdErr } = await db
+        .from('customers')
+        .update(customerSubscriptionUpdates)
+        .eq('id', targetCustomerId);
+
+      if (custUpdErr) {
+        console.error('Failed to update customer subscription after payment:', custUpdErr);
+        return res.status(500).json({
+          success: false,
+          code: 'DATABASE_ERROR',
+          error: 'Database operation failed while activating customer subscription.',
+        });
+      }
+
+      // 2. Align customer storage tier quota
+      const basePlanLimitGB = isVipTier ? 15 : authoritativePlanId === 'plan-pro' ? 10 : 5;
+      await db
+        .from('customer_storage')
+        .update({
+          base_plan_limit_gb: basePlanLimitGB,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('customer_id', targetCustomerId);
+
+      // 3. Record verified payment in payments ledger
+      const { error: payInsertErr } = await db.from('payments').insert({
+        id: `pay-rzp-${Date.now()}`,
+        transaction_id: razorpay_payment_id,
+        invoice_number: `INV-RZP-${Date.now().toString().slice(-6)}`,
+        customer_id: targetCustomerId,
+        customer_name: custRecord?.name || profile?.full_name || 'Valued Client',
+        business_name: custRecord?.business_name || 'Client Business',
+        amount: amountINR,
+        plan_name: authoritativePlanId,
+        date: nowIso,
+        status: 'Paid',
+        method: paymentMethod,
+      });
+
+      if (payInsertErr) {
+        console.error('Failed to record verified payment in ledger:', payInsertErr);
+      }
+
+      // 4. Update the authoritative database order to Paid and In Progress
+      await db
+        .from('orders')
+        .update({
+          payment_status: 'Paid',
+          status: 'In Progress',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', dbOrderId)
+        .eq('customer_id', targetCustomerId);
     }
 
     return res.json({
@@ -1281,7 +1415,7 @@ app.post('/api/payments/verify-payment', async (req, res) => {
       paymentId: razorpay_payment_id,
       orderId: razorpay_order_id,
       amount: amountINR,
-      planId: targetPlanId,
+      planId: authoritativePlanId,
       message: 'Payment verified and subscription activated successfully!',
     });
   } catch (err: any) {
@@ -1289,7 +1423,7 @@ app.post('/api/payments/verify-payment', async (req, res) => {
     return res.status(500).json({
       success: false,
       code: 'VERIFICATION_ERROR',
-      error: err?.message || 'Payment signature verification encountered an error.',
+      error: 'Payment signature verification encountered an error. Please try again.',
     });
   }
 });
@@ -1355,105 +1489,173 @@ app.post('/api/payments/webhook', async (req: any, res) => {
     const db = adminCheck.client;
 
     if (eventType === 'payment.captured' || eventType === 'order.paid') {
-      if (customerId && txnId) {
-        // Idempotency: Check if payment already recorded
-        const { data: existing } = await db
-          .from('payments')
-          .select('id')
-          .eq('transaction_id', txnId)
+      const orderId = notes.orderId;
+      const planId = notes.planId;
+
+      // 1. Validate required order metadata
+      if (!customerId || !txnId || !orderId) {
+        console.warn(`Razorpay webhook fulfillment ignored: missing critical identifiers (customerId=${customerId}, txnId=${txnId}, orderId=${orderId})`);
+        return res.json({ received: true });
+      }
+
+      // 2. Validate plan against server-side PLAN_CATALOG (do NOT default to plan-pro)
+      if (!planId || !PLAN_CATALOG[planId]) {
+        console.warn(`Razorpay webhook fulfillment ignored: unrecognized or missing planId "${planId}"`);
+        return res.json({ received: true });
+      }
+
+      const catalogPlan = PLAN_CATALOG[planId];
+
+      // 3. Validate payment amount against server-side catalog price in paise
+      const paymentAmountPaise = Number(paymentEntity.amount || 0);
+      if (paymentAmountPaise !== catalogPlan.amountPaise) {
+        console.warn(`Razorpay webhook fulfillment ignored: payment amount mismatch (received=${paymentAmountPaise}, expected=${catalogPlan.amountPaise})`);
+        return res.json({ received: true });
+      }
+
+      // 4. Idempotency: Check if payment is already recorded in payments ledger
+      const { data: existing, error: existErr } = await db
+        .from('payments')
+        .select('id')
+        .eq('transaction_id', txnId)
+        .maybeSingle();
+
+      if (existErr) {
+        console.error('Razorpay webhook database error checking existing payment:', existErr);
+        return res.json({ received: true });
+      }
+
+      if (!existing) {
+        // 5. Cross-check WebRunzo database order BEFORE fulfillment
+        const { data: dbOrder, error: orderFetchErr } = await db
+          .from('orders')
+          .select('*')
+          .eq('id', orderId)
+          .eq('customer_id', customerId)
           .maybeSingle();
 
-        if (!existing) {
-          // Fetch customer details
-          const { data: cust } = await db
-            .from('customers')
-            .select('name, business_name')
-            .eq('id', customerId)
-            .maybeSingle();
+        if (orderFetchErr) {
+          console.error('Razorpay webhook database error fetching order:', orderFetchErr);
+          return res.json({ received: true });
+        }
 
-          const todayDate = new Date().toISOString().split('T')[0];
-          const nextExpiryDate = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
-          const isVipTier = planId === 'plan-business';
+        if (!dbOrder) {
+          console.warn(`Razorpay webhook fulfillment ignored: database order not found (orderId=${orderId}, customerId=${customerId})`);
+          return res.json({ received: true });
+        }
 
-          // 1. Update customer subscription directly in public.customers
-          const customerSubscriptionUpdates: Record<string, any> = {
-            plan_id: planId,
-            payment_status: 'Paid',
-            account_status: 'Active',
-            subscription_state: 'ACTIVE',
-            plan_start_date: todayDate,
-            plan_expiry_date: nextExpiryDate,
-            auto_renew: true,
-            grace_period_end_date: null,
-            website_status: 'Live',
+        // Verify order's plan_id matches notes.planId
+        if (dbOrder.plan_id !== planId) {
+          console.warn(`Razorpay webhook fulfillment ignored: order plan mismatch (dbPlan=${dbOrder.plan_id}, notesPlan=${planId})`);
+          return res.json({ received: true });
+        }
+
+        // Verify order's amount matches server catalog price
+        if (Number(dbOrder.amount) !== catalogPlan.amountINR) {
+          console.warn(`Razorpay webhook fulfillment ignored: order amount mismatch (dbAmount=${dbOrder.amount}, catalogAmount=${catalogPlan.amountINR})`);
+          return res.json({ received: true });
+        }
+
+        // Fetch customer details
+        const { data: cust, error: custFetchErr } = await db
+          .from('customers')
+          .select('name, business_name')
+          .eq('id', customerId)
+          .maybeSingle();
+
+        if (custFetchErr) {
+          console.error('Razorpay webhook database error fetching customer record:', custFetchErr);
+        }
+
+        const todayDate = new Date().toISOString().split('T')[0];
+        const nextExpiryDate = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
+        const isVipTier = planId === 'plan-business';
+
+        // 6. Update customer subscription state directly in public.customers
+        const customerSubscriptionUpdates: Record<string, any> = {
+          plan_id: planId,
+          payment_status: 'Paid',
+          account_status: 'Active',
+          subscription_state: 'ACTIVE',
+          plan_start_date: todayDate,
+          plan_expiry_date: nextExpiryDate,
+          auto_renew: true,
+          grace_period_end_date: null,
+          website_status: 'Live',
+          updated_at: new Date().toISOString(),
+        };
+
+        if (isVipTier) {
+          customerSubscriptionUpdates.client_tier = 'premium';
+          customerSubscriptionUpdates.sla_level = '2-Hour VIP Priority SLA';
+        } else if (planId === 'plan-pro') {
+          customerSubscriptionUpdates.sla_level = 'Priority 12h';
+        } else {
+          customerSubscriptionUpdates.sla_level = 'Standard 24h';
+        }
+
+        const { error: custUpdErr } = await db
+          .from('customers')
+          .update(customerSubscriptionUpdates)
+          .eq('id', customerId);
+
+        if (custUpdErr) {
+          console.error('Razorpay webhook database error updating customer subscription:', custUpdErr);
+        }
+
+        // 7. Align customer storage tier quota
+        const basePlanLimitGB = isVipTier ? 15 : planId === 'plan-pro' ? 10 : 5;
+        const { error: storageUpdErr } = await db
+          .from('customer_storage')
+          .update({
+            base_plan_limit_gb: basePlanLimitGB,
             updated_at: new Date().toISOString(),
-          };
+          })
+          .eq('customer_id', customerId);
 
-          if (isVipTier) {
-            customerSubscriptionUpdates.client_tier = 'premium';
-            customerSubscriptionUpdates.sla_level = '2-Hour VIP Priority SLA';
-          } else if (planId === 'plan-pro') {
-            customerSubscriptionUpdates.sla_level = 'Priority 12h';
-          } else {
-            customerSubscriptionUpdates.sla_level = 'Standard 24h';
-          }
+        if (storageUpdErr) {
+          console.error('Razorpay webhook database error updating customer storage quota:', storageUpdErr);
+        }
 
-          await db
-            .from('customers')
-            .update(customerSubscriptionUpdates)
-            .eq('id', customerId);
+        // 8. Insert payment record into payments ledger
+        const { error: payInsertErr } = await db.from('payments').insert({
+          id: `pay-rzp-${Date.now()}`,
+          transaction_id: txnId,
+          invoice_number: `INV-RZP-${Date.now().toString().slice(-6)}`,
+          customer_id: customerId,
+          customer_name: cust?.name || paymentEntity.email || 'Valued Client',
+          business_name: cust?.business_name || 'Client Business',
+          amount: catalogPlan.amountINR,
+          plan_name: planId,
+          date: nowIso,
+          status: 'Paid',
+          method: paymentEntity.method ? `Razorpay (${paymentEntity.method.toUpperCase()})` : 'Razorpay Settlement',
+        });
 
-          // 2. Align customer storage tier quota
-          const basePlanLimitGB = isVipTier ? 15 : planId === 'plan-pro' ? 10 : 5;
-          await db
-            .from('customer_storage')
-            .update({
-              base_plan_limit_gb: basePlanLimitGB,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('customer_id', customerId);
+        if (payInsertErr) {
+          console.error('Razorpay webhook database error inserting payment record:', payInsertErr);
+        }
 
-          // 3. Insert payment record
-          await db.from('payments').insert({
-            id: `pay-rzp-${Date.now()}`,
-            transaction_id: txnId,
-            invoice_number: `INV-RZP-${Date.now().toString().slice(-6)}`,
-            customer_id: customerId,
-            customer_name: cust?.name || paymentEntity.email || 'Valued Client',
-            business_name: cust?.business_name || 'Client Business',
-            amount: amountINR,
-            plan_name: planId,
-            date: nowIso,
-            status: 'Paid',
-            method: paymentEntity.method ? `Razorpay (${paymentEntity.method.toUpperCase()})` : 'Razorpay Settlement',
-          });
+        // 9. Update ONLY this exact order
+        const { error: orderUpdErr } = await db
+          .from('orders')
+          .update({
+            payment_status: 'Paid',
+            status: 'In Progress',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', orderId)
+          .eq('customer_id', customerId);
 
-          // 4. Update orders to Paid
-          if (notes.orderId) {
-            await db
-              .from('orders')
-              .update({
-                payment_status: 'Paid',
-                status: 'In Progress',
-              })
-              .eq('id', notes.orderId)
-              .eq('customer_id', customerId);
-          } else {
-            await db
-              .from('orders')
-              .update({
-                payment_status: 'Paid',
-                status: 'In Progress',
-              })
-              .eq('customer_id', customerId);
-          }
+        if (orderUpdErr) {
+          console.error('Razorpay webhook database error updating order status:', orderUpdErr);
         }
       }
     } else if (eventType === 'payment.failed') {
       if (customerId) {
         // Set 7-day grace period on customer subscription record
         const graceEndIso = new Date(Date.now() + 7 * 86400000).toISOString();
-        await db
+        const { error: custFailedErr } = await db
           .from('customers')
           .update({
             payment_status: 'Failed',
@@ -1463,22 +1665,34 @@ app.post('/api/payments/webhook', async (req: any, res) => {
           })
           .eq('id', customerId);
 
+        if (custFailedErr) {
+          console.error('Razorpay webhook database error updating failed customer subscription:', custFailedErr);
+        }
+
         // Record failed attempt in payments table
         if (txnId) {
-          const { data: existingFailed } = await db
+          const { data: existingFailed, error: checkFailedErr } = await db
             .from('payments')
             .select('id')
             .eq('transaction_id', txnId)
             .maybeSingle();
 
+          if (checkFailedErr) {
+            console.error('Razorpay webhook database error checking existing failed payment:', checkFailedErr);
+          }
+
           if (!existingFailed) {
-            const { data: cust } = await db
+            const { data: cust, error: custFetchErr } = await db
               .from('customers')
               .select('name, business_name')
               .eq('id', customerId)
               .maybeSingle();
 
-            await db.from('payments').insert({
+            if (custFetchErr) {
+              console.error('Razorpay webhook database error fetching customer for failed payment:', custFetchErr);
+            }
+
+            const { error: payFailedInsertErr } = await db.from('payments').insert({
               id: `pay-failed-${Date.now()}`,
               transaction_id: txnId,
               invoice_number: `INV-FAIL-${Date.now().toString().slice(-6)}`,
@@ -1486,11 +1700,15 @@ app.post('/api/payments/webhook', async (req: any, res) => {
               customer_name: cust?.name || paymentEntity.email || 'Valued Client',
               business_name: cust?.business_name || 'Client Business',
               amount: amountINR,
-              plan_name: planId,
+              plan_name: notes.planId || 'Unknown Plan',
               date: nowIso,
               status: 'Failed',
               method: paymentEntity.method ? `Razorpay (${paymentEntity.method.toUpperCase()})` : 'Razorpay Settlement',
             });
+
+            if (payFailedInsertErr) {
+              console.error('Razorpay webhook database error inserting failed payment record:', payFailedInsertErr);
+            }
           }
         }
       }
@@ -1531,7 +1749,11 @@ app.post('/api/client/redeploy', async (req, res) => {
       .eq('id', authUserData.user.id)
       .maybeSingle();
 
-    const targetCustomerId = req.body.customerId || profile?.customer_id;
+    const targetCustomerId =
+      profile?.role === 'admin' && req.body.customerId
+        ? req.body.customerId
+        : profile?.customer_id;
+
     if (!targetCustomerId) {
       return res.status(400).json({
         success: false,
@@ -1575,11 +1797,11 @@ app.post('/api/client/redeploy', async (req, res) => {
         throw new Error(`Upstream deployment webhook responded with HTTP ${hookRes.status}: ${hookRes.statusText}`);
       }
     } catch (hookErr: any) {
-      console.error('Deployment build webhook execution failed:', hookErr?.message);
+      console.error('Deployment build webhook execution failed:', hookErr);
       return res.status(502).json({
         success: false,
         code: 'DEPLOYMENT_WEBHOOK_FAILED',
-        error: `Deployment build hook failed: ${hookErr?.message}`,
+        error: 'Deployment build hook failed to trigger. Please try again or contact support.',
       });
     }
 
@@ -1620,10 +1842,11 @@ app.post('/api/client/redeploy', async (req, res) => {
       .eq('id', targetCustomerId);
 
     if (updateErr) {
+      console.error('Failed to record deployment in DB:', updateErr);
       return res.status(500).json({
         success: false,
         code: 'DB_UPDATE_ERROR',
-        error: `Failed to record deployment: ${updateErr.message}`,
+        error: 'Failed to record deployment. Please try again.',
       });
     }
 
@@ -1996,7 +2219,7 @@ app.post('/api/client/onboarding', async (req, res) => {
       return res.status(500).json({
         success: false,
         code: 'DATABASE_ERROR',
-        error: custErr.message,
+        error: 'Database operation failed while saving onboarding details. Please try again.',
       });
     }
 

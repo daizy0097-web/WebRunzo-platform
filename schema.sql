@@ -371,38 +371,36 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_customer_id TEXT;
-  v_client_tier TEXT;
-  v_business_name TEXT;
+  v_role TEXT;
 BEGIN
-  -- Look for an existing customer record matching this user's email
-  SELECT id, client_tier, business_name INTO v_customer_id, v_client_tier, v_business_name
-  FROM public.customers
-  WHERE LOWER(email) = LOWER(NEW.email)
-  LIMIT 1;
+  -- Enforce server-authoritative role assignment:
+  -- NEVER trust raw_user_meta_data->>'role'. Default to 'client' for all signups,
+  -- while preserving the legitimate master admin account.
+  IF LOWER(TRIM(COALESCE(NEW.email, ''))) = 'hello.webrunzo@gmail.com' THEN
+    v_role := 'admin';
+  ELSE
+    v_role := 'client';
+  END IF;
 
+  -- Create initial profile row.
+  -- Notice: We deliberately DO NOT look up public.customers or set customers.user_id here.
+  -- This prevents an unverified signup from hijacking an existing customer record.
+  -- Legitimate linking occurs strictly through:
+  --   1) Atomic admin lead conversion (convert_enquiry_to_customer_atomic), or
+  --   2) Explicit client portal verification (link_authenticated_client_customer).
   INSERT INTO public.profiles (id, email, full_name, role, client_tier, customer_id, business_name)
   VALUES (
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'client'),
-    COALESCE(v_client_tier, NEW.raw_user_meta_data->>'client_tier', 'normal'),
-    v_customer_id,
-    v_business_name
+    v_role,
+    'normal',
+    NULL,
+    NULL
   )
   ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email,
-      full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name),
-      customer_id = COALESCE(public.profiles.customer_id, EXCLUDED.customer_id),
-      business_name = COALESCE(public.profiles.business_name, EXCLUDED.business_name);
-
-  -- Link user_id on customer record if matched
-  IF v_customer_id IS NOT NULL THEN
-    UPDATE public.customers
-    SET user_id = NEW.id
-    WHERE id = v_customer_id AND user_id IS NULL;
-  END IF;
+      full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name);
 
   RETURN NEW;
 END;
@@ -987,20 +985,46 @@ DROP POLICY IF EXISTS "Admin can manage all notifications" ON public.client_noti
 CREATE POLICY "Admin can manage all notifications"
   ON public.client_notifications FOR ALL
   TO authenticated
-  USING (public.is_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 DROP POLICY IF EXISTS "Clients can view and update own notifications" ON public.client_notifications;
-CREATE POLICY "Clients can view and update own notifications"
-  ON public.client_notifications FOR ALL
+DROP POLICY IF EXISTS "Clients can view own notifications" ON public.client_notifications;
+CREATE POLICY "Clients can view own notifications"
+  ON public.client_notifications FOR SELECT
   TO authenticated
   USING (customer_id = public.get_auth_customer_id());
 
--- ENQUIRIES (Public submission, Admin full control)
+DROP POLICY IF EXISTS "Clients can update own notifications" ON public.client_notifications;
+CREATE POLICY "Clients can update own notifications"
+  ON public.client_notifications FOR UPDATE
+  TO authenticated
+  USING (customer_id = public.get_auth_customer_id())
+  WITH CHECK (customer_id = public.get_auth_customer_id());
+
+DROP POLICY IF EXISTS "Clients can insert own support receipts" ON public.client_notifications;
+CREATE POLICY "Clients can insert own support receipts"
+  ON public.client_notifications FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    customer_id = public.get_auth_customer_id()
+    AND title IN ('Support Query Received', 'Assistance Request Received')
+    AND message = 'Your query has been logged. Our engineering specialist will review it promptly.'
+    AND type = 'info'
+  );
+
+-- ENQUIRIES (Public submission restricted to New status and no admin notes, Admin full control)
 DROP POLICY IF EXISTS "Public can submit enquiries" ON public.enquiries;
 CREATE POLICY "Public can submit enquiries"
   ON public.enquiries FOR INSERT
   TO anon, authenticated
-  WITH CHECK (TRUE);
+  WITH CHECK (
+    (
+      (status IS NULL OR status = 'New')
+      AND (admin_notes IS NULL OR TRIM(admin_notes) = '')
+    )
+    OR public.is_admin()
+  );
 
 DROP POLICY IF EXISTS "Admin can manage enquiries" ON public.enquiries;
 CREATE POLICY "Admin can manage enquiries"
