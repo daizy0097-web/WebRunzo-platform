@@ -426,15 +426,13 @@ export const ClientLogin: React.FC = () => {
          * avoiding localhost connection failures on client machines.
          */
         const baseUrl = getAppBaseUrl();
-        const pathname =
-          typeof window !== 'undefined' && window.location?.pathname
-            ? window.location.pathname
-            : '/';
-        const cleanPath = pathname.endsWith('/') ? pathname : `${pathname}/`;
-        const redirectTo = baseUrl
-          ? `${baseUrl}${cleanPath}`
-          : `${window.location.origin}${cleanPath}`;
+const origin =
+  baseUrl ||
+  (typeof window !== 'undefined'
+    ? window.location.origin
+    : '');
 
+const redirectTo = `${origin}/#/client`;
         console.log('Sending Supabase password reset with redirectTo:', redirectTo);
 
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
