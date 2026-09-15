@@ -279,8 +279,8 @@ app.post('/api/admin/convert-lead', async (req, res) => {
     let authUserId: string | null = existingProfByEmail?.id || null;
     let actionLink: string | null = null;
     let invitationSent = false;
-    const appUrl = process.env.APP_URL || 'http://localhost:3000';
-    const redirectUrl = `${appUrl}/?tab=client`;
+    const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const redirectUrl = `${appUrl}/#/client`;
 
     // -------------------------------------------------------------------------
     // 4. AUTH PROVISIONING (SERVER-SIDE ADMIN API) - EXECUTED BEFORE MUTATIONS

@@ -45,10 +45,22 @@ export interface SupabaseProfile {
 
 /**
  * Resolves the primary base URL of the running application.
- * Safely derives origin from the current window location in the browser,
- * ensuring the exact public origin is used regardless of build-time env vars.
+ * Safely derives origin from the running browser location or injected environment URL.
+ * Never uses the AI Studio platform host (aistudio.google.com) as the app base URL,
+ * ensuring password reset and authentication links open the actual WebRunzo application.
  */
 export function getAppBaseUrl(): string {
+  // Injected environment URL (e.g. Cloud Run service URL or custom deployment domain)
+  const envUrl = 
+    (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_APP_URL as string)) ||
+    (typeof process !== 'undefined' && (process.env?.VITE_APP_URL || process.env?.APP_URL)) || 
+    '';
+  const cleanEnvUrl =
+    envUrl && typeof envUrl === 'string' && envUrl.startsWith('http') && !envUrl.includes('MY_APP_URL')
+      ? envUrl.replace(/\/+$/, '')
+      : '';
+
+  // Browser location origin check
   if (
     typeof window !== 'undefined' &&
     window.location &&
@@ -56,20 +68,31 @@ export function getAppBaseUrl(): string {
     window.location.origin !== 'null' &&
     !window.location.origin.startsWith('about:')
   ) {
-    return window.location.origin.replace(/\/+$/, '');
+    const origin = window.location.origin.replace(/\/+$/, '');
+    const hostname = (window.location.hostname || '').toLowerCase();
+
+    // Prevent AI Studio platform frame origin from masquerading as the app's public URL
+    const isAiStudioPlatform =
+      hostname.includes('aistudio.google.com') ||
+      origin.includes('aistudio.google.com');
+
+    if (!isAiStudioPlatform) {
+      return origin;
+    }
   }
 
-  const envUrl = 
-    (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_APP_URL as string)) ||
-    (typeof process !== 'undefined' && process.env?.VITE_APP_URL) || 
-    '';
+  // Fallback to real injected application host when running inside AI Studio
+  if (cleanEnvUrl) {
+    return cleanEnvUrl;
+  }
+
   if (
-    envUrl &&
-    typeof envUrl === 'string' &&
-    envUrl.startsWith('http') &&
-    !envUrl.includes('MY_APP_URL')
+    typeof window !== 'undefined' &&
+    window.location?.origin &&
+    window.location.origin !== 'null' &&
+    !window.location.origin.includes('aistudio.google.com')
   ) {
-    return envUrl.replace(/\/+$/, '');
+    return window.location.origin.replace(/\/+$/, '');
   }
 
   return '';

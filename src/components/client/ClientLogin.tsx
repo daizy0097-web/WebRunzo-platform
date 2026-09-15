@@ -425,14 +425,18 @@ export const ClientLogin: React.FC = () => {
          * Uses the real Cloud Run host or running browser origin dynamically,
          * avoiding localhost connection failures on client machines.
          */
-        const baseUrl = getAppBaseUrl();
-const origin =
-  baseUrl ||
-  (typeof window !== 'undefined'
-    ? window.location.origin
-    : '');
+        const appBaseUrl = getAppBaseUrl();
+        const origin =
+          appBaseUrl ||
+          (typeof window !== 'undefined' &&
+          window.location?.origin &&
+          window.location.origin !== 'null' &&
+          !window.location.origin.includes('aistudio.google.com')
+            ? window.location.origin
+            : '');
 
-const redirectTo = `${origin}/#/client`;
+        const cleanOrigin = origin.replace(/\/+$/, '');
+        const redirectTo = cleanOrigin ? `${cleanOrigin}/#/client` : undefined;
         console.log('Sending Supabase password reset with redirectTo:', redirectTo);
 
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
