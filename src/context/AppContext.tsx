@@ -277,7 +277,10 @@ interface AppContextType {
   // Support Tickets
   addTicket: (ticketData: Omit<SupportTicket, 'id' | 'createdAt'>) => SupportTicket;
   updateTicketStatus: (id: string, status: SupportTicket['status']) => void;
+  updateTicketPriority: (id: string, priority: string) => void;
   updateTicketLeadTracking: (id: string, leadTrackingStatus: LeadTrackingStatus, adminNotes?: string) => void;
+  updateTicketAdminNotes: (id: string, adminNotes: string) => void;
+  linkTicketCustomer: (id: string, customerId: string) => void;
   replyToTicket: (ticketId: string, message: string, sender: 'Client' | 'Admin', senderName: string, attachmentName?: string) => void;
 
   // Notifications
@@ -2310,14 +2313,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     const targetTicket = tickets.find((t) => t.id === id);
-    dbUpdateTicket(id, { status }, targetTicket?.customerId).catch((err) => {
+    const effectiveCustomerId = targetTicket?.customerId || customers.find((c) => targetTicket?.email && c.email?.toLowerCase() === targetTicket.email.toLowerCase())?.id;
+
+    dbUpdateTicket(id, { status, subject: targetTicket?.subject }, effectiveCustomerId).catch((err) => {
       console.warn('Error updating ticket status in Supabase:', err);
     });
-    if (targetTicket && targetTicket.customerId) {
+    if (targetTicket && effectiveCustomerId) {
       setNotifications((prev) => [
         {
           id: `notif-${Date.now()}`,
-          customerId: targetTicket.customerId,
+          customerId: effectiveCustomerId,
           title: `Status Update: ${targetTicket.subject}`,
           message: `Your request status has been updated to "${status}".`,
           date: new Date().toISOString().split('T')[0],
@@ -2329,6 +2334,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     addToast('info', 'Status Updated', `Request status is now "${status}".`);
+  };
+
+  const updateTicketPriority = (id: string, priority: string) => {
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          return { ...t, priority, updatedAt: new Date().toISOString() };
+        }
+        return t;
+      })
+    );
+
+    const targetTicket = tickets.find((t) => t.id === id);
+    const effectiveCustomerId = targetTicket?.customerId || customers.find((c) => targetTicket?.email && c.email?.toLowerCase() === targetTicket.email.toLowerCase())?.id;
+
+    dbUpdateTicket(id, { priority, subject: targetTicket?.subject }, effectiveCustomerId).catch((err) => {
+      console.warn('Error updating ticket priority in Supabase:', err);
+    });
+
+    addToast('info', 'Priority Updated', `Ticket priority set to "${priority}".`);
+  };
+
+  const linkTicketCustomer = (id: string, customerId: string) => {
+    const customer = customers.find((c) => c.id === customerId);
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          return {
+            ...t,
+            customerId,
+            clientName: customer?.name || t.clientName,
+            businessName: customer?.businessName || t.businessName,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      })
+    );
+
+    dbUpdateTicket(id, { customerId }, customerId).catch((err) => {
+      console.warn('Error linking ticket to customer in Supabase:', err);
+    });
+
+    addToast('success', 'Customer Linked', `Ticket linked to ${customer?.name || 'Customer'}.`);
   };
 
   const updateTicketLeadTracking = (id: string, leadTrackingStatus: LeadTrackingStatus, adminNotes?: string) => {
@@ -2351,6 +2400,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('success', 'Lead Tracking Updated', `Marked as "${leadTrackingStatus}".`);
   };
 
+  const updateTicketAdminNotes = (id: string, adminNotes: string) => {
+    setTickets((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          return {
+            ...t,
+            adminNotes,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      })
+    );
+    dbUpdateTicket(id, { adminNotes }).catch((err) => {
+      console.warn('Error updating ticket admin notes in Supabase:', err);
+    });
+    addToast('success', 'Internal Notes Saved', 'Scope notes stored securely.');
+  };
+
   const replyToTicket = (
     ticketId: string,
     message: string,
@@ -2368,15 +2436,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: formatted,
       attachmentName,
     };
+
+    const targetTicket = tickets.find((t) => t.id === ticketId);
+    const nextStatus: QueryStatus =
+      sender === 'Admin' && (targetTicket?.status === 'New' || targetTicket?.status === 'In Review')
+        ? 'In Progress'
+        : sender === 'Client' && targetTicket?.status === 'Waiting for Customer'
+        ? 'In Review'
+        : targetTicket?.status || 'In Progress';
+
     setTickets((prev) =>
       prev.map((t) => {
         if (t.id === ticketId) {
-          const nextStatus: QueryStatus =
-            sender === 'Admin' && (t.status === 'New' || t.status === 'In Review')
-              ? 'In Progress'
-              : sender === 'Client' && t.status === 'Waiting for Customer'
-              ? 'In Review'
-              : t.status;
           return {
             ...t,
             status: nextStatus,
@@ -2388,17 +2459,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    const targetTicket = tickets.find((t) => t.id === ticketId);
-    dbAddTicketReply(ticketId, newReply, targetTicket?.customerId, targetTicket?.subject).catch((err) => {
+    const effectiveCustomerId = targetTicket?.customerId || customers.find((c) => targetTicket?.email && c.email?.toLowerCase() === targetTicket.email.toLowerCase())?.id;
+
+    dbAddTicketReply(ticketId, newReply, effectiveCustomerId, targetTicket?.subject, nextStatus).catch((err) => {
       console.warn('Error adding ticket reply in Supabase:', err);
     });
 
-    if (targetTicket && sender === 'Admin' && targetTicket.customerId) {
+    if (effectiveCustomerId && sender === 'Admin') {
       setNotifications((prev) => [
         {
           id: `notif-${Date.now()}`,
-          customerId: targetTicket.customerId,
-          title: `New Reply on: ${targetTicket.subject}`,
+          customerId: effectiveCustomerId,
+          title: `New Reply on: ${targetTicket?.subject || 'Support Query'}`,
           message: `${senderName}: "${message.length > 70 ? message.slice(0, 70) + '...' : message}"`,
           date: formatted.split(' ')[0],
           read: false,
@@ -2704,7 +2776,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteOrder,
         addTicket,
         updateTicketStatus,
+        updateTicketPriority,
         updateTicketLeadTracking,
+        updateTicketAdminNotes,
+        linkTicketCustomer,
         replyToTicket,
         markNotificationRead,
         markAllNotificationsRead,

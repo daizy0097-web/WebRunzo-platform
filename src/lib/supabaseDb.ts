@@ -1401,6 +1401,7 @@ export async function dbUpdateTicket(
     if (updates.priority !== undefined) payload.priority = updates.priority;
     if (updates.leadTrackingStatus !== undefined) payload.lead_tracking_status = updates.leadTrackingStatus;
     if (updates.adminNotes !== undefined) payload.admin_notes = updates.adminNotes;
+    if (updates.customerId !== undefined) payload.customer_id = updates.customerId;
 
     const { error } = await supabase.from('support_tickets').update(payload).eq('id', id);
     if (error) {
@@ -1436,7 +1437,8 @@ export async function dbAddTicketReply(
     attachmentName?: string;
   },
   customerId?: string,
-  ticketSubject?: string
+  ticketSubject?: string,
+  nextStatus?: QueryStatus
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {};
   try {
@@ -1454,11 +1456,11 @@ export async function dbAddTicketReply(
       return { error: replyErr.message };
     }
 
-    // Update ticket updated_at
-    const nextStatus = reply.sender === 'Admin' ? 'In Progress' : 'In Review';
+    // Update ticket status and updated_at
+    const statusToSet = nextStatus || (reply.sender === 'Admin' ? 'In Progress' : 'In Review');
     await supabase
       .from('support_tickets')
-      .update({ status: nextStatus, updated_at: new Date().toISOString() })
+      .update({ status: statusToSet, updated_at: new Date().toISOString() })
       .eq('id', ticketId);
 
     // Notify client if Admin replied
