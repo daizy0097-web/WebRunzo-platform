@@ -17,9 +17,24 @@ import { AdminSettings } from './AdminSettings';
 import { AdminLogin } from './AdminLogin';
 
 export const AdminHome: React.FC = () => {
-  const { adminTab, session } = useApp();
+  const { adminTab, session, setCurrentExperience, setClientTab, addToast } = useApp();
 
-  // If not logged in as admin, show AdminLogin screen
+  const isClient = session.role === 'normal_client' || session.role === 'premium_client' || session.role === 'client';
+
+  // SECURITY ENFORCEMENT: If an authenticated client lands on AdminHome, block navigation immediately
+  React.useEffect(() => {
+    if (isClient) {
+      addToast('error', 'Access Denied', 'Administrator privileges required. Client accounts cannot access Admin portals.');
+      setCurrentExperience('client');
+      setClientTab('dashboard');
+    }
+  }, [isClient, setCurrentExperience, setClientTab, addToast]);
+
+  if (isClient) {
+    return null; // Suppress admin portal and admin login rendering completely
+  }
+
+  // If not logged in as admin (e.g. unauthenticated guest navigating to #/admin), show AdminLogin screen
   if (session.role !== 'admin') {
     return <AdminLogin />;
   }

@@ -23,7 +23,9 @@ const MainContent: React.FC = () => {
       {/* Experience Switcher */}
       <div className="flex-1 flex flex-col">
         {currentExperience === 'public' && <PublicHome />}
-        {currentExperience === 'admin' && <AdminHome />}
+        {currentExperience === 'admin' && (
+          session.role === 'admin' || session.role === 'guest' ? <AdminHome /> : <ClientHome />
+        )}
         {currentExperience === 'client' && <ClientHome />}
       </div>
 

@@ -326,12 +326,9 @@ CREATE TABLE IF NOT EXISTS public.admin_settings (
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
-  RETURN (
-    LOWER(TRIM(COALESCE(auth.jwt() ->> 'email', ''))) = 'hello.webrunzo@gmail.com'
-    OR EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role = 'admin'
-    )
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;

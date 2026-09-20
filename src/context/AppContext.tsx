@@ -531,6 +531,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     name: 'Visitor',
   });
 
+  const sessionRef = useRef(session);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  const isClientRole = (role: Role) =>
+    role === 'normal_client' || role === 'premium_client' || role === 'client';
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const addToast = (type: Toast['type'], title: string, message: string) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, type, title, message }]);
+    setTimeout(() => {
+      removeToast(id);
+    }, 4000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   // Current Views with URL Sync
   const initialNav = parseUrlToState();
   const [isPasswordResetMode, setIsPasswordResetModeState] = useState<boolean>(() => {
@@ -579,6 +601,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setCurrentExperience = (exp: Experience) => {
+    const activeRole = sessionRef.current.role;
+    const clientAccount = isClientRole(activeRole);
+
+    // SECURITY ENFORCEMENT: Block client accounts from navigating to Admin portal
+    if (exp === 'admin' && clientAccount) {
+      addToast('error', 'Access Denied', 'Administrator privileges required. Client accounts cannot access Admin portals.');
+      setCurrentExperienceState('client');
+      updateUrlHistory('client', publicPage, 'dashboard', adminTab);
+      return;
+    }
+
     // If in password recovery mode and trying to leave, allow only if reset mode explicitly cleared
     setCurrentExperienceState(exp);
     updateUrlHistory(exp, publicPage, clientTab, adminTab);
@@ -597,6 +630,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setAdminTab = (tab: AdminTab) => {
+    const activeRole = sessionRef.current.role;
+    const clientAccount = isClientRole(activeRole);
+
+    if (clientAccount) {
+      addToast('error', 'Access Denied', 'Administrator privileges required. Client accounts cannot access Admin portals.');
+      return;
+    }
+
     setAdminTabState(tab);
     setCurrentExperienceState('admin');
     updateUrlHistory('admin', publicPage, clientTab, tab);
@@ -608,6 +649,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isPopstateEventRef.current = true;
       const parsed = parseUrlToState();
       const inResetMode = isStoredPasswordResetActive();
+      const activeRole = sessionRef.current.role;
+      const clientAccount = isClientRole(activeRole);
+
+      // SECURITY ENFORCEMENT: If client manually enters an admin URL, block navigation immediately
+      if (parsed.experience === 'admin' && clientAccount) {
+        setCurrentExperienceState('client');
+        setClientTabState('dashboard');
+        if (typeof window !== 'undefined') {
+          window.history.replaceState(
+            { exp: 'client', pubPage: 'home', clientTab: 'dashboard', adminTab: 'dashboard' },
+            '',
+            '#/client/dashboard'
+          );
+        }
+        addToast('error', 'Access Denied', 'Administrator privileges required. Client accounts cannot access Admin portals.');
+        setTimeout(() => {
+          isPopstateEventRef.current = false;
+        }, 50);
+        return;
+      }
+
       if (inResetMode) {
         setCurrentExperienceState('client');
       } else {
@@ -645,8 +707,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const openConciergeModal = () => setIsConciergeOpen(true);
   const closeConciergeModal = () => setIsConciergeOpen(false);
-
-  const [toasts, setToasts] = useState<Toast[]>([]);
 
   // Refresh all application data from Supabase
   const refreshData = async (overrideRole?: Role, overrideCustomerId?: string) => {
@@ -709,15 +769,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           let profile = await getProfile(sbSession.user.id);
           if (!isMounted) return;
 
-          const MASTER_ADMIN_EMAIL = 'hello.webrunzo@gmail.com';
-          const authUserEmail = (sbSession.user.email || '').trim().toLowerCase();
-          const isMasterAdmin =
-            profile?.role === 'admin' ||
-            authUserEmail === MASTER_ADMIN_EMAIL.toLowerCase();
+          // Strictly verify role from database profile (never rely on email checks)
+          const isAdmin = profile?.role === 'admin';
 
           if (!profile) {
             // Only auto-heal client profiles for non-admin accounts
-            if (!isMasterAdmin) {
+            if (!isAdmin) {
               try {
                 const fullName = sbSession.user.user_metadata?.full_name || sbSession.user.email?.split('@')[0] || 'Client';
                 const { data: newProfile } = await supabase
@@ -740,10 +797,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           }
 
-          if (isMasterAdmin) {
+          if (profile?.role === 'admin') {
             const nextSession: UserSession = {
               role: 'admin',
-              email: sbSession.user.email || profile?.email || MASTER_ADMIN_EMAIL,
+              email: sbSession.user.email || profile?.email || '',
               name: profile?.full_name || 'WebRunzo Owner',
             };
             setSession(nextSession);
@@ -771,6 +828,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 name: profile.business_name || profile.full_name || 'Client',
               };
               setSession(nextSession);
+
+              // SECURITY ENFORCEMENT: If URL was requested on admin experience, redirect client immediately
+              const currentNav = parseUrlToState();
+              if (currentNav.experience === 'admin') {
+                setCurrentExperienceState('client');
+                setClientTabState('dashboard');
+                if (typeof window !== 'undefined') {
+                  window.history.replaceState(
+                    { exp: 'client', pubPage: 'home', clientTab: 'dashboard', adminTab: 'dashboard' },
+                    '',
+                    '#/client/dashboard'
+                  );
+                }
+                addToast('error', 'Access Denied', 'Administrator privileges required. Client accounts cannot access Admin portals.');
+              }
+
               await refreshData(nextSession.role, profile.customer_id);
             } else {
               setSession({ role: 'guest', email: '', name: 'Visitor' });
@@ -817,18 +890,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subscription.unsubscribe();
     };
   }, []);
-
-  const addToast = (type: Toast['type'], title: string, message: string) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, type, title, message }]);
-    setTimeout(() => {
-      removeToast(id);
-    }, 4000);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
 
   const logActivity = (type: ActivityLog['type'], title: string, description: string, user: string, customerId?: string) => {
     const newLog: ActivityLog = {
@@ -972,9 +1033,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authEmail,
       });
 
-      // Strict Rejection 1: Explicitly reject Admin role or Master Admin email
-      const isMasterAdmin = authEmail === ADMIN_EMAIL.toLowerCase() || profile?.role === 'admin';
-      if (isMasterAdmin) {
+      // Strict Rejection 1: Explicitly reject Admin role verified from database profile
+      if (profile?.role === 'admin') {
         console.warn('[AUTH_SECURITY] Admin account authenticated on Client Portal. Terminating session and rejecting:', {
           userId: data.user.id,
           authEmail,
