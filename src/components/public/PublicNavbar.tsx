@@ -171,7 +171,7 @@ export const PublicNavbar: React.FC = () => {
               <span>Support & Concierge</span>
             </button>
 
-            {session.role !== 'guest' && (
+            {session.role !== 'guest' ? (
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
@@ -180,6 +180,17 @@ export const PublicNavbar: React.FC = () => {
                 className="w-full text-center py-2.5 rounded-xl border border-slate-700 hover:border-slate-600 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 font-bold text-xs cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               >
                 {session.role === 'admin' ? 'Admin Portal' : 'Client Portal'}
+              </button>
+            ) : (
+              <button
+                id="btn-nav-mobile-client-login"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setCurrentExperience('client');
+                }}
+                className="w-full text-center py-2.5 rounded-xl border border-slate-800 hover:border-slate-700 bg-slate-900/60 hover:bg-slate-900 text-slate-400 hover:text-slate-200 font-medium text-xs cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                Client Login
               </button>
             )}
           </div>

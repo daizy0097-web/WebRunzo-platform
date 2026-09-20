@@ -81,19 +81,21 @@ export const PublicFooter: React.FC = () => {
           {/* Col 4: Portals & Legal */}
           <div className="space-y-3">
             <div className="font-bold text-white uppercase text-xs tracking-wider">
-              {session.role !== 'guest' ? 'Client Portal & Legal' : 'Legal & Support'}
+              Client Portal & Legal
             </div>
             <ul className="space-y-2">
-              {session.role !== 'guest' && (
-                <li>
-                  <button 
-                    onClick={() => setCurrentExperience(session.role === 'admin' ? 'admin' : 'client')} 
-                    className="text-amber-400 hover:text-amber-300 font-semibold transition flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>{session.role === 'admin' ? 'Owner Admin Dashboard →' : 'Client Dashboard →'}</span>
-                  </button>
-                </li>
-              )}
+              <li>
+                <button 
+                  id="btn-footer-client-login"
+                  onClick={() => {
+                    setCurrentExperience('client');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }} 
+                  className="text-slate-400 hover:text-indigo-400 transition flex items-center gap-1 cursor-pointer text-xs"
+                >
+                  <span>{session.role !== 'guest' ? (session.role === 'admin' ? 'Owner Admin Dashboard →' : 'Client Dashboard →') : 'Client Login →'}</span>
+                </button>
+              </li>
               <li>
                 <button 
                   id="btn-footer-support-concierge"
