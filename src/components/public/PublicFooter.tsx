@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Sparkles, ShieldCheck, Mail, Phone, MapPin, Globe } from 'lucide-react';
 
 export const PublicFooter: React.FC = () => {
-  const { settings, setCurrentExperience, openConciergeModal, setPublicPage } = useApp();
+  const { settings, setCurrentExperience, openConciergeModal, setPublicPage, session } = useApp();
 
   const scrollTo = (id: string) => {
     setPublicPage('home');
@@ -34,7 +34,7 @@ export const PublicFooter: React.FC = () => {
               {settings.brandTagline}. We engineer modern, high-converting digital platforms for businesses, restaurants, medical practices, gyms, and luxury real estate.
             </p>
 
-            <div className="pt-2 text-[11px] text-slate-500 space-y-1">
+            <div className="pt-2 text-xs text-slate-500 space-y-1">
               <div className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-indigo-400" />
                 <span>{settings.supportEmail}</span>
@@ -52,7 +52,7 @@ export const PublicFooter: React.FC = () => {
 
           {/* Col 2: Navigation */}
           <div className="space-y-3">
-            <div className="font-bold text-white uppercase text-[11px] tracking-wider">Navigation</div>
+            <div className="font-bold text-white uppercase text-xs tracking-wider">Navigation</div>
             <ul className="space-y-2">
               <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-white transition">Home</button></li>
               <li><button onClick={() => scrollTo('why-webrunzo')} className="hover:text-white transition">Why WebRunzo</button></li>
@@ -66,7 +66,7 @@ export const PublicFooter: React.FC = () => {
 
           {/* Col 3: Templates */}
           <div className="space-y-3">
-            <div className="font-bold text-white uppercase text-[11px] tracking-wider">Top Niches</div>
+            <div className="font-bold text-white uppercase text-xs tracking-wider">Top Niches</div>
             <ul className="space-y-2">
               <li><button onClick={() => scrollTo('templates')} className="hover:text-white transition">Corporate & Business</button></li>
               <li><button onClick={() => scrollTo('templates')} className="hover:text-white transition">Restaurants & Bars</button></li>
@@ -80,16 +80,20 @@ export const PublicFooter: React.FC = () => {
 
           {/* Col 4: Portals & Legal */}
           <div className="space-y-3">
-            <div className="font-bold text-white uppercase text-[11px] tracking-wider">Client Portal & Legal</div>
+            <div className="font-bold text-white uppercase text-xs tracking-wider">
+              {session.role !== 'guest' ? 'Client Portal & Legal' : 'Legal & Support'}
+            </div>
             <ul className="space-y-2">
-              <li>
-                <button 
-                  onClick={() => setCurrentExperience('client')} 
-                  className="text-amber-400 hover:text-amber-300 font-semibold transition flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Client Dashboard Login →</span>
-                </button>
-              </li>
+              {session.role !== 'guest' && (
+                <li>
+                  <button 
+                    onClick={() => setCurrentExperience(session.role === 'admin' ? 'admin' : 'client')} 
+                    className="text-amber-400 hover:text-amber-300 font-semibold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>{session.role === 'admin' ? 'Owner Admin Dashboard →' : 'Client Dashboard →'}</span>
+                  </button>
+                </li>
+              )}
               <li>
                 <button 
                   id="btn-footer-support-concierge"
@@ -106,7 +110,7 @@ export const PublicFooter: React.FC = () => {
                     setPublicPage('privacy');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="text-slate-400 hover:text-white transition text-[11px] cursor-pointer text-left"
+                  className="text-slate-400 hover:text-white transition text-xs cursor-pointer text-left"
                 >
                   Privacy Policy
                 </button>
@@ -118,7 +122,7 @@ export const PublicFooter: React.FC = () => {
                     setPublicPage('terms');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="text-slate-400 hover:text-white transition text-[11px] cursor-pointer text-left"
+                  className="text-slate-400 hover:text-white transition text-xs cursor-pointer text-left"
                 >
                   Terms of Service
                 </button>
@@ -130,7 +134,7 @@ export const PublicFooter: React.FC = () => {
                     setPublicPage('sla');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="text-slate-400 hover:text-white transition text-[11px] cursor-pointer text-left"
+                  className="text-slate-400 hover:text-white transition text-xs cursor-pointer text-left"
                 >
                   Service Level Agreement (SLA)
                 </button>
@@ -141,7 +145,7 @@ export const PublicFooter: React.FC = () => {
         </div>
 
         {/* Bottom Strip */}
-        <div className="pt-8 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-slate-500 text-[11px]">
+        <div className="pt-8 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-slate-500 text-xs">
           <div>
             © {new Date().getFullYear()} WebRunzo Digital Systems Inc. All rights reserved.
           </div>

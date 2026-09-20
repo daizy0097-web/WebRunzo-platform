@@ -106,7 +106,7 @@ export const FloatingWhatsApp: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="text-[11px] text-white/90 font-medium">
+                  <div className="text-xs text-white/90 font-medium">
                     WebRunzo Dedicated Assistance Desk
                   </div>
                 </div>
@@ -116,7 +116,7 @@ export const FloatingWhatsApp: React.FC = () => {
                 id="btn-close-concierge-modal"
                 type="button"
                 onClick={closeDialog}
-                className="text-white/80 hover:text-white p-2.5 -mr-1.5 rounded-full hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation cursor-pointer"
+                className="text-white/80 hover:text-white p-2.5 -mr-1.5 rounded-full hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                 aria-label="Close Support & Concierge modal"
               >
                 <X className="w-4 h-4" />
@@ -138,7 +138,7 @@ export const FloatingWhatsApp: React.FC = () => {
 
           {/* Body */}
           <div className="p-4 bg-slate-50 space-y-3 max-h-[75vh] overflow-y-auto">
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-xs text-slate-700 shadow-sm leading-relaxed">
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-xs text-slate-800 shadow-sm leading-relaxed">
               {availability.status === 'Online' && (
                 <>
                   👋 <strong>Welcome to WebRunzo Concierge!</strong> Our engineers and support webmasters are currently <strong>Online</strong>. Need a custom template consultation, turnaround estimate, or site maintenance? Connect instantly below.
@@ -166,7 +166,7 @@ export const FloatingWhatsApp: React.FC = () => {
                   <span>WhatsApp Hotline</span>
                 </div>
 
-                <div className="font-bold text-slate-800 text-[11px] mt-1 font-mono truncate">
+                <div className="font-bold text-slate-800 text-xs mt-1 font-mono truncate">
                   {settings.whatsAppNumber}
                 </div>
               </div>
@@ -177,7 +177,7 @@ export const FloatingWhatsApp: React.FC = () => {
                   <span>Support Email</span>
                 </div>
 
-                <div className="font-bold text-slate-800 text-[11px] mt-1 truncate">
+                <div className="font-bold text-slate-800 text-xs mt-1 truncate">
                   {settings.supportEmail}
                 </div>
               </div>
@@ -187,7 +187,7 @@ export const FloatingWhatsApp: React.FC = () => {
             <form onSubmit={handleSendMessage} className="space-y-2.5 pt-1">
               <label
                 htmlFor="concierge-input-message"
-                className="block text-[11px] font-bold text-slate-700"
+                className="block text-xs font-bold text-slate-800"
               >
                 Direct Message to Concierge Desk:
               </label>
@@ -204,7 +204,7 @@ export const FloatingWhatsApp: React.FC = () => {
               <button
                 id="btn-submit-concierge-chat"
                 type="submit"
-                className={`w-full text-white text-xs font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all touch-manipulation active:scale-[0.98] cursor-pointer ${
+                className={`w-full text-white text-xs font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all touch-manipulation active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                   availability.status === 'Online'
                     ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/20'
                     : availability.status === 'Away'
@@ -242,7 +242,7 @@ export const FloatingWhatsApp: React.FC = () => {
         data-testid="btn-support-concierge"
         type="button"
         onClick={toggleOpen}
-        className="group relative inline-flex items-center justify-center gap-2 w-11 h-11 md:w-auto md:h-auto md:px-3.5 md:py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs shadow-xl shadow-emerald-950/40 hover:shadow-emerald-600/40 transition-all duration-150 active:scale-95 cursor-pointer touch-manipulation select-none border border-emerald-400/30"
+        className="group relative inline-flex items-center justify-center gap-2 w-11 h-11 md:w-auto md:h-auto md:px-3.5 md:py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs shadow-xl shadow-emerald-950/40 hover:shadow-emerald-600/40 transition-all duration-150 active:scale-95 cursor-pointer touch-manipulation select-none border border-emerald-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         aria-label="Support & Concierge"
         title="Support & Concierge Desk"
       >

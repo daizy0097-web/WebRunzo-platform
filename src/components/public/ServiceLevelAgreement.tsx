@@ -8,7 +8,7 @@ export const ServiceLevelAgreement: React.FC = () => {
   const { setPublicPage, settings, openConciergeModal } = useApp();
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200 font-sans">
       <PublicNavbar />
 
       <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
@@ -22,7 +22,7 @@ export const ServiceLevelAgreement: React.FC = () => {
                 setPublicPage('home');
               }
             }}
-            className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800"
+            className="inline-flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white transition-all duration-200 cursor-pointer bg-slate-900 hover:bg-slate-800 active:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-700/80 hover:border-slate-600 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back</span>
@@ -77,7 +77,7 @@ export const ServiceLevelAgreement: React.FC = () => {
               <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800 space-y-2">
                 <div className="font-bold text-white text-sm">Starter Plan</div>
                 <div className="text-indigo-400 font-mono font-bold text-lg">24-48 Hours</div>
-                <p className="text-slate-400 text-[11px]">
+                <p className="text-slate-400 text-xs">
                   Standard ticket queue for copy changes, photo swaps, and minor updates.
                 </p>
               </div>
@@ -85,7 +85,7 @@ export const ServiceLevelAgreement: React.FC = () => {
               <div className="bg-slate-900/80 p-4 rounded-xl border border-indigo-500/40 space-y-2">
                 <div className="font-bold text-white text-sm">Growth Plan</div>
                 <div className="text-emerald-400 font-mono font-bold text-lg">Under 24 Hours</div>
-                <p className="text-slate-400 text-[11px]">
+                <p className="text-slate-400 text-xs">
                   Priority webmaster queue for dynamic content, menu uploads, and SEO adjustments.
                 </p>
               </div>
@@ -93,10 +93,10 @@ export const ServiceLevelAgreement: React.FC = () => {
               <div className="bg-slate-900/80 p-4 rounded-xl border border-amber-500/40 space-y-2">
                 <div className="font-bold text-white text-sm flex items-center justify-between">
                   <span>VIP Enterprise</span>
-                  <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">VIP</span>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">VIP</span>
                 </div>
                 <div className="text-amber-400 font-mono font-bold text-lg">Under 2 Hours</div>
-                <p className="text-slate-400 text-[11px]">
+                <p className="text-slate-400 text-xs">
                   Urgent hot-patch queue with direct WhatsApp concierge priority escalation.
                 </p>
               </div>

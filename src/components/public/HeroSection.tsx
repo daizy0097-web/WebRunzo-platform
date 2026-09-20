@@ -49,7 +49,7 @@ export const HeroSection: React.FC = () => {
             <button
               id="hero-btn-explore-templates"
               onClick={scrollToTemplates}
-              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm px-7 py-3.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-xl hover:shadow-indigo-600/40 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold text-sm px-7 py-3.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <Layout className="w-4 h-4" />
               <span>Explore All Templates</span>
@@ -58,7 +58,7 @@ export const HeroSection: React.FC = () => {
             <button
               id="hero-btn-get-started"
               onClick={() => openEnquiryModal()}
-              className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-slate-100 border border-slate-700/80 font-bold text-sm px-7 py-3.5 rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-100 border border-slate-700/80 hover:border-slate-600 font-bold text-sm px-7 py-3.5 rounded-xl shadow-sm hover:shadow transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <span>Get Started</span>
               <ArrowRight className="w-4 h-4 text-indigo-400" />
@@ -95,11 +95,11 @@ export const HeroSection: React.FC = () => {
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
               </div>
-              <span className="text-[11px] font-mono text-slate-300 ml-2">https://preview.webrunzo.app/marketplace</span>
+              <span className="text-xs font-mono text-slate-300 ml-2">https://preview.webrunzo.app/marketplace</span>
             </div>
             <button
               onClick={() => openPreviewModal(templates[0])}
-              className="text-[11px] text-indigo-300 hover:text-white flex items-center gap-1 font-semibold"
+              className="text-xs text-indigo-300 hover:text-white flex items-center gap-1 font-semibold"
             >
               <Play className="w-3 h-3 fill-indigo-400" />
               <span>Launch Interactive Preview</span>
@@ -126,7 +126,7 @@ export const HeroSection: React.FC = () => {
                 </div>
                 <div className="p-3">
                   <div className="text-white text-xs font-bold truncate">{tpl.name}</div>
-                  <div className="text-slate-400 text-[11px] line-clamp-1 mt-0.5">{tpl.description}</div>
+                  <div className="text-slate-400 text-xs line-clamp-1 mt-0.5">{tpl.description}</div>
                 </div>
               </div>
             ))}

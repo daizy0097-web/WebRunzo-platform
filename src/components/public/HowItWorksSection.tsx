@@ -98,7 +98,7 @@ export const HowItWorksSection: React.FC = () => {
         <div className="mt-14 text-center">
           <button
             onClick={() => openEnquiryModal()}
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm px-6 py-3.5 rounded-xl shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold text-sm px-7 py-3.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
           >
             <span>Start Step 1: Choose Your Template Now</span>
             <ArrowRight className="w-4 h-4" />

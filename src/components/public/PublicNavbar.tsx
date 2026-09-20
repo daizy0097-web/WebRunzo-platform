@@ -91,17 +91,19 @@ export const PublicNavbar: React.FC = () => {
 
           {/* Right Action CTA & Portal Links */}
           <div className="hidden sm:flex items-center gap-3">
-            <button
-              onClick={() => setCurrentExperience('client')}
-              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-900 border border-slate-800 transition cursor-pointer"
-            >
-              Client Login
-            </button>
+            {session.role !== 'guest' && (
+              <button
+                onClick={() => setCurrentExperience(session.role === 'admin' ? 'admin' : 'client')}
+                className="text-xs font-bold text-slate-200 hover:text-white px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 border border-slate-700/80 hover:border-slate-600 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              >
+                {session.role === 'admin' ? 'Admin Portal' : 'Client Portal'}
+              </button>
+            )}
             
             <button
               id="btn-nav-get-started"
               onClick={() => openEnquiryModal()}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 sm:px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 transition-all transform hover:-translate-y-0.5 flex items-center gap-2 cursor-pointer"
+              className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-4 sm:px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <Sparkles className="w-4 h-4" />
               <span>Get Started</span>
@@ -112,13 +114,13 @@ export const PublicNavbar: React.FC = () => {
           <div className="flex lg:hidden items-center gap-2">
             <button
               onClick={() => openEnquiryModal()}
-              className="bg-indigo-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg"
+              className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-md shadow-indigo-600/30 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Get Started
             </button>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="text-slate-300 p-2 rounded-lg hover:bg-slate-800"
+              className="text-slate-300 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               aria-label="Toggle Navigation"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -163,21 +165,23 @@ export const PublicNavbar: React.FC = () => {
                 setMobileMenuOpen(false);
                 openConciergeModal();
               }}
-              className="w-full text-center py-2.5 rounded-xl border border-emerald-500/40 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full text-center py-2.5 rounded-xl border border-emerald-500/40 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               <LifeBuoy className="w-4 h-4 text-emerald-400" />
               <span>Support & Concierge</span>
             </button>
 
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                setCurrentExperience('client');
-              }}
-              className="w-full text-center py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 font-bold text-xs cursor-pointer"
-            >
-              Client Portal Login
-            </button>
+            {session.role !== 'guest' && (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setCurrentExperience(session.role === 'admin' ? 'admin' : 'client');
+                }}
+                className="w-full text-center py-2.5 rounded-xl border border-slate-700 hover:border-slate-600 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 font-bold text-xs cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                {session.role === 'admin' ? 'Admin Portal' : 'Client Portal'}
+              </button>
+            )}
           </div>
         </div>
       )}

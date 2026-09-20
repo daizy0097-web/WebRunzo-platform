@@ -47,7 +47,7 @@ export const PricingSection: React.FC = () => {
               >
                 {/* Most Popular Badge */}
                 {isPopular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-[11px] font-extrabold px-4 py-1 rounded-full uppercase tracking-wider shadow-lg shadow-indigo-500/30 flex items-center gap-1.5 whitespace-nowrap">
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-xs font-extrabold px-4 py-1 rounded-full uppercase tracking-wider shadow-lg shadow-indigo-500/30 flex items-center gap-1.5 whitespace-nowrap">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>MOST POPULAR</span>
                   </div>
@@ -72,7 +72,7 @@ export const PricingSection: React.FC = () => {
                         {formatINR(price, settings?.currencySymbol)}
                       </span>
                     </div>
-                    <div className="text-[11px] mt-1.5 text-slate-400 font-medium flex items-center gap-1">
+                    <div className="text-xs mt-1.5 text-slate-400 font-medium flex items-center gap-1">
                       <Zap className="w-3.5 h-3.5 text-indigo-400" />
                       <span>Turnkey website build & setup</span>
                     </div>
@@ -86,7 +86,7 @@ export const PricingSection: React.FC = () => {
                     {(plan.features || []).map((feat, fIdx) => (
                       <div key={fIdx} className="flex items-start gap-2.5 text-xs sm:text-sm leading-relaxed">
                         <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
-                        <span className={`${feat.includes('Unlimited Revisions') ? 'text-indigo-200 font-semibold' : 'text-slate-300'}`}>
+                        <span className={`${feat.includes('Unlimited Revisions') ? 'text-indigo-300 font-semibold' : 'text-slate-300'}`}>
                           {feat}
                         </span>
                       </div>
@@ -97,10 +97,10 @@ export const PricingSection: React.FC = () => {
                 {/* Clear CTA Button */}
                 <button
                   onClick={() => openEnquiryModal(undefined, plan.id)}
-                  className={`w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition cursor-pointer ${
+                  className={`w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
                     isPopular
-                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30'
-                      : 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 hover:border-slate-600'
+                      ? 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0'
+                      : 'bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm hover:shadow'
                   }`}
                 >
                   <span>Get Started</span>

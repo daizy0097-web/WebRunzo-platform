@@ -24,14 +24,14 @@ export const FinalCTASection: React.FC = () => {
           Ready to Elevate Your Business with a Professional Website?
         </h2>
 
-        <p className="text-sm sm:text-base text-indigo-200 max-w-2xl mx-auto leading-relaxed">
+        <p className="text-sm sm:text-base text-indigo-300 max-w-2xl mx-auto leading-relaxed">
           Select your favorite template, share your business goals, and let our dedicated engineers build and launch your high-converting online presence.
         </p>
 
         <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
           <button
             onClick={() => openEnquiryModal()}
-            className="w-full sm:w-auto bg-white text-indigo-950 hover:bg-slate-100 font-extrabold text-sm px-8 py-4 rounded-xl shadow-xl shadow-black/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto bg-white hover:bg-slate-100 active:bg-slate-200 text-indigo-950 font-bold text-sm sm:text-base px-7 py-3.5 rounded-xl shadow-xl shadow-black/20 hover:shadow-black/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
           >
             <Sparkles className="w-4 h-4 text-indigo-600" />
             <span>Get Started with WebRunzo</span>
@@ -41,17 +41,17 @@ export const FinalCTASection: React.FC = () => {
             href={`https://wa.me/${settings.whatsAppNumber.replace(/[^0-9]/g, '')}`}
             target="_blank"
             rel="noopener noreferrer"
-            className={`w-full sm:w-auto font-bold text-sm px-7 py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2.5 ${
+            className={`w-full sm:w-auto font-bold text-sm sm:text-base px-7 py-3.5 rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 ${
               availability.status === 'Online'
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
+                ? 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-emerald-950/40'
                 : availability.status === 'Away'
-                ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950/40'
-                : 'bg-slate-800 hover:bg-slate-700 text-white shadow-slate-950/40'
+                ? 'bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white shadow-amber-950/40'
+                : 'bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white shadow-slate-950/40'
             }`}
           >
             <PhoneCall className="w-4 h-4" />
             <span>Chat on WhatsApp ({settings.whatsAppNumber})</span>
-            <span className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-black/20 text-white`}>
+            <span className={`inline-flex items-center gap-1 text-xs font-extrabold px-2 py-0.5 rounded-full bg-black/20 text-white whitespace-nowrap`}>
               <span className={`w-1.5 h-1.5 rounded-full ${availability.dotColor} ${availability.dotPulse ? 'animate-pulse' : ''}`}></span>
               {availability.status}
             </span>

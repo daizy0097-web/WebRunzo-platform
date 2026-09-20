@@ -39,7 +39,7 @@ export const PreviewModal: React.FC = () => {
                 closePreviewModal();
                 openEnquiryModal(template.id);
               }}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+              className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Use This Template</span>
@@ -48,8 +48,9 @@ export const PreviewModal: React.FC = () => {
 
           <button
             onClick={closePreviewModal}
-            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             title="Close Preview"
+            aria-label="Close Preview"
           >
             <X className="w-5 h-5" />
           </button>

@@ -26,6 +26,12 @@ export const DemoHeaderBar: React.FC = () => {
     templates,
   } = useApp();
 
+  // Hide the platform switcher from the public website
+  // Unauthenticated visitors and non-admins must never see platform switching options
+  if (currentExperience === 'public' || session.role !== 'admin') {
+    return null;
+  }
+
   const isAuthenticated = session.role !== 'guest';
 
   return (

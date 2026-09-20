@@ -8,7 +8,7 @@ export const TermsOfService: React.FC = () => {
   const { setPublicPage, settings, openConciergeModal } = useApp();
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200 font-sans">
       <PublicNavbar />
 
       <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
@@ -22,7 +22,7 @@ export const TermsOfService: React.FC = () => {
                 setPublicPage('home');
               }
             }}
-            className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800"
+            className="inline-flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white transition-all duration-200 cursor-pointer bg-slate-900 hover:bg-slate-800 active:bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-700/80 hover:border-slate-600 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back</span>

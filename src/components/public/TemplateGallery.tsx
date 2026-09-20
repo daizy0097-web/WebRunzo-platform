@@ -92,7 +92,7 @@ export const TemplateGallery: React.FC = () => {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-200"
+                  className="absolute right-3 top-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors cursor-pointer focus-visible:outline-none focus-visible:text-white"
                 >
                   Clear
                 </button>
@@ -122,7 +122,7 @@ export const TemplateGallery: React.FC = () => {
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`whitespace-nowrap px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                className={`whitespace-nowrap px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                   selectedCategory === cat
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
                     : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-white'
@@ -149,7 +149,7 @@ export const TemplateGallery: React.FC = () => {
                 setSelectedCategory('All');
                 setSearchQuery('');
               }}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition"
+              className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md shadow-indigo-600/30 hover:shadow-indigo-600/40 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Reset Filters
             </button>
@@ -172,7 +172,7 @@ export const TemplateGallery: React.FC = () => {
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
                     <button
                       onClick={() => openPreviewModal(template)}
-                      className="bg-slate-900/90 hover:bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-lg border border-slate-700 backdrop-blur transition cursor-pointer"
+                      className="bg-slate-900/95 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg border border-slate-700/80 hover:border-slate-600 backdrop-blur transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                     >
                       <Eye className="w-3.5 h-3.5 text-indigo-400" />
                       <span>Live Preview</span>
@@ -220,7 +220,7 @@ export const TemplateGallery: React.FC = () => {
                   <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
                     <button
                       onClick={() => openPreviewModal(template)}
-                      className="text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1 py-1.5 px-2 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                      className="text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1 py-1.5 px-3 rounded-xl hover:bg-slate-800 active:bg-slate-700 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       <span>Preview</span>
@@ -228,7 +228,7 @@ export const TemplateGallery: React.FC = () => {
 
                     <button
                       onClick={() => openEnquiryModal(template.id)}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl flex items-center gap-1 shadow-md shadow-indigo-600/30 transition cursor-pointer"
+                      className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1 shadow-md shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                     >
                       <span>Use This</span>
                       <ArrowRight className="w-3.5 h-3.5" />

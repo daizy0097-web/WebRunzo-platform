@@ -17,37 +17,37 @@ export const WhyWebRunzo: React.FC = () => {
       icon: Clock,
       title: 'Fast Turnaround',
       description: 'Go from concept to live website in 7–8 business days (or 2–3 days expedited for Business VIP) without months of agency delays.',
-      color: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+      color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     },
     {
       icon: ShieldCheck,
       title: 'Zero Technical Headaches',
       description: 'We manage everything under one roof: cloud hosting, DNS, SSL certificates, automated daily backups, and security patches.',
-      color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+      color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     },
     {
       icon: Smartphone,
       title: '100% Mobile & Touch Optimized',
       description: 'Engineered with responsive precision so your business looks immaculate on iPhones, Androids, tablets, and 4K displays.',
-      color: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+      color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
     },
     {
       icon: Search,
       title: 'Built-in Local SEO & Google Speed',
       description: 'Clean semantic code and 95+ PageSpeed optimizations ensure your website ranks high on Google local search results.',
-      color: 'bg-sky-500/10 text-sky-600 border-sky-500/20',
+      color: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
     },
     {
       icon: Layers,
       title: 'Dedicated Client Portal',
       description: 'Easily update your headlines, business hours, contact numbers, and images with live instant preview reflection.',
-      color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+      color: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
     },
     {
       icon: Headphones,
       title: 'Human WhatsApp & Email Support',
       description: 'Direct access to your dedicated WebRunzo website specialist for ongoing tweaks, questions, and feature expansions.',
-      color: 'bg-rose-500/10 text-rose-600 border-rose-500/20',
+      color: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
     },
   ];
 

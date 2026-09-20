@@ -10,12 +10,15 @@ import { AdminHome } from './components/admin/AdminHome';
 import { ClientHome } from './components/client/ClientHome';
 
 const MainContent: React.FC = () => {
-  const { currentExperience } = useApp();
+  const { currentExperience, session } = useApp();
+
+  // Platform switcher only visible to authorized administrators when outside the public website
+  const showPlatformSwitcher = currentExperience !== 'public' && session.role === 'admin';
 
   return (
     <div className="min-h-screen flex flex-col font-sans">
-      {/* Universal Demo Switcher Bar */}
-      <DemoHeaderBar />
+      {/* Universal Demo Switcher Bar - hidden on public site and for unauthenticated visitors */}
+      {showPlatformSwitcher && <DemoHeaderBar />}
 
       {/* Experience Switcher */}
       <div className="flex-1 flex flex-col">

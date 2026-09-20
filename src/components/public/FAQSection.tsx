@@ -37,7 +37,7 @@ export const FAQSection: React.FC = () => {
               >
                 <button
                   onClick={() => toggle(idx)}
-                  className="w-full p-5 text-left flex items-center justify-between gap-4 font-bold text-sm sm:text-base text-white hover:text-indigo-400 transition cursor-pointer"
+                  className="w-full p-5 text-left flex items-center justify-between gap-4 font-bold text-sm sm:text-base text-white hover:text-indigo-400 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   <span className="flex items-center gap-2.5">
                     <HelpCircle className="w-4 h-4 text-indigo-400 shrink-0" />

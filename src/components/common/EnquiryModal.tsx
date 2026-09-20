@@ -90,7 +90,8 @@ export const EnquiryModal: React.FC = () => {
           </div>
           <button
             onClick={closeEnquiryModal}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
+            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
@@ -103,12 +104,12 @@ export const EnquiryModal: React.FC = () => {
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}>1</span>
               <span>Template</span>
             </div>
-            <span className="text-slate-600">→</span>
+            <span className="text-slate-500">→</span>
             <div className={`flex items-center gap-2 ${step >= 2 ? 'text-indigo-400 font-bold' : ''}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}>2</span>
               <span>Package</span>
             </div>
-            <span className="text-slate-600">→</span>
+            <span className="text-slate-500">→</span>
             <div className={`flex items-center gap-2 ${step >= 3 ? 'text-indigo-400 font-bold' : ''}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step >= 3 ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}>3</span>
               <span>Your Details</span>
@@ -150,7 +151,7 @@ export const EnquiryModal: React.FC = () => {
                         )}
                       </div>
                       <div className="font-bold text-xs text-white truncate mt-0.5">{tpl.name}</div>
-                      <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{tpl.description}</div>
+                      <div className="text-xs text-slate-400 line-clamp-1 mt-0.5">{tpl.description}</div>
                     </div>
                   </div>
                 ))}
@@ -163,7 +164,7 @@ export const EnquiryModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 transition shadow cursor-pointer"
+                  className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   <span>Next: Choose Package</span>
                   <ArrowRight className="w-4 h-4" />
@@ -193,7 +194,7 @@ export const EnquiryModal: React.FC = () => {
                   >
                     <div>
                       {pln.popularBadge && (
-                        <span className="inline-block bg-indigo-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mb-1">
+                        <span className="inline-block bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mb-1 whitespace-nowrap">
                           Most Popular
                         </span>
                       )}
@@ -202,10 +203,10 @@ export const EnquiryModal: React.FC = () => {
                         <span className="text-xl sm:text-2xl font-extrabold text-white font-mono">{formatINR(pln.annualPrice)}</span>
                         <span className="text-[10px] text-slate-400 block">Turnkey Website Package</span>
                       </div>
-                      <p className="text-[11px] text-slate-400 mb-3">{pln.description}</p>
+                      <p className="text-xs text-slate-400 mb-3">{pln.description}</p>
                     </div>
 
-                    <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <div className="pt-2 border-t border-slate-800 text-xs text-slate-300 space-y-1">
                       <div>✓ {pln.features[0] || `${pln.maxPages} Custom Pages`}</div>
                       <div>✓ {pln.features[1] || `${pln.turnaroundDays}-day delivery`}</div>
                       <div>✓ {pln.revisions}</div>
@@ -218,14 +219,14 @@ export const EnquiryModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="text-xs font-semibold text-slate-400 hover:text-white px-3 py-2 cursor-pointer"
+                  className="text-xs font-semibold text-slate-400 hover:text-white px-3 py-2 rounded-xl hover:bg-slate-900 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   ← Back to Templates
                 </button>
                 <button
                   type="button"
                   onClick={() => setStep(3)}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 transition shadow cursor-pointer"
+                  className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   <span>Next: Contact Details</span>
                   <ArrowRight className="w-4 h-4" />
@@ -254,7 +255,7 @@ export const EnquiryModal: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Your Full Name *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Your Full Name *</label>
                   <div className="relative">
                     <User className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                     <input
@@ -269,7 +270,7 @@ export const EnquiryModal: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Business / Brand Name *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Business / Brand Name *</label>
                   <div className="relative">
                     <Building2 className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                     <input
@@ -284,7 +285,7 @@ export const EnquiryModal: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Email Address *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address *</label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                     <input
@@ -299,7 +300,7 @@ export const EnquiryModal: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Phone / WhatsApp Number</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Phone / WhatsApp Number</label>
                   <div className="relative">
                     <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                     <input
@@ -314,7 +315,7 @@ export const EnquiryModal: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Special Requirements / Notes (Optional)</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Special Requirements / Notes (Optional)</label>
                 <textarea
                   rows={2}
                   value={message}
@@ -328,13 +329,13 @@ export const EnquiryModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="text-xs font-semibold text-slate-400 hover:text-white px-3 py-2 cursor-pointer"
+                  className="text-xs font-semibold text-slate-400 hover:text-white px-3 py-2 rounded-xl hover:bg-slate-900 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   ← Back to Plans
                 </button>
                 <button
                   type="submit"
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-6 py-2.5 rounded-xl flex items-center gap-2 transition shadow-md shadow-indigo-600/30 cursor-pointer"
+                  className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   <Sparkles className="w-4 h-4" />
                   <span>Submit Project Request</span>
@@ -375,7 +376,7 @@ export const EnquiryModal: React.FC = () => {
                   <Sparkles className="w-4 h-4 text-indigo-400" />
                   <span>What happens next?</span>
                 </div>
-                <ul className="text-[11px] leading-relaxed text-slate-300 space-y-1.5 list-disc list-inside">
+                <ul className="text-xs leading-relaxed text-slate-300 space-y-1.5 list-disc list-inside">
                   <li>Our solutions team is reviewing your project details and chosen requirements.</li>
                   <li>We will reach out to <strong>{email}</strong> within 1 business day with your scope confirmation.</li>
                   <li>Once finalized, your personalized Client Portal access and setup will be activated.</li>
@@ -385,7 +386,7 @@ export const EnquiryModal: React.FC = () => {
               <div className="pt-2 flex items-center justify-center">
                 <button
                   onClick={closeEnquiryModal}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-6 py-2.5 rounded-xl transition shadow cursor-pointer inline-flex items-center gap-2"
+                  className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer inline-flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Done</span>
