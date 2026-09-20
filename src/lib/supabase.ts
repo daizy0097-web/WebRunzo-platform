@@ -99,6 +99,35 @@ export function getAppBaseUrl(): string {
 }
 
 /**
+ * Extract auth error description from the URL hash or search params if an auth callback failed
+ * (e.g. invalid or expired password reset link).
+ */
+export function getAuthErrorFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+
+    if (hash.includes('error=')) {
+      const cleanHash = hash.replace(/^#\/?/, '').replace(/^\?/, '');
+      const params = new URLSearchParams(cleanHash);
+      const desc = params.get('error_description') || params.get('error');
+      if (desc) return decodeURIComponent(desc.replace(/\+/g, ' '));
+    }
+
+    if (search.includes('error=')) {
+      const cleanSearch = search.replace(/^\?/, '');
+      const params = new URLSearchParams(cleanSearch);
+      const desc = params.get('error_description') || params.get('error');
+      if (desc) return decodeURIComponent(desc.replace(/\+/g, ' '));
+    }
+  } catch (err) {
+    console.debug('Error parsing URL auth error:', err);
+  }
+  return null;
+}
+
+/**
  * Fetch the authenticated user's profile and role from the `profiles` table.
  */
 export async function getProfile(userId: string): Promise<SupabaseProfile | null> {

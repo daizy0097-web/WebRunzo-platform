@@ -23,6 +23,7 @@ import {
   supabase,
   isSupabaseConfigured,
   getAppBaseUrl,
+  getAuthErrorFromUrl,
 } from '../../lib/supabase';
 
 type AuthView =
@@ -93,20 +94,16 @@ export const ClientLogin: React.FC = () => {
     const checkRecoverySession =
       async () => {
         try {
-          const fullUrl =
-            typeof window !== 'undefined'
-              ? window.location.href.toLowerCase()
-              : '';
-
-          const hash =
-            typeof window !== 'undefined'
-              ? window.location.hash.toLowerCase()
-              : '';
-
-          const search =
-            typeof window !== 'undefined'
-              ? window.location.search.toLowerCase()
-              : '';
+          const authError = getAuthErrorFromUrl();
+          if (authError && mounted) {
+            console.warn('Supabase auth redirect error:', authError);
+            setError(`Password reset notice: ${authError}. Please request a fresh reset link below.`);
+            clearRecoveryUrlState();
+            setStoredPasswordResetActive(false);
+            setIsPasswordResetMode(false);
+            setView('forgot');
+            return;
+          }
 
           const isRecoveryUrl = checkIsRecoveryInUrl();
           const isRecoveryActive = isRecoveryUrl || (isPasswordResetMode && isStoredPasswordResetActive());
@@ -185,6 +182,7 @@ export const ClientLogin: React.FC = () => {
 
           const isRecovery =
             event === 'PASSWORD_RECOVERY' ||
+            checkIsRecoveryInUrl() ||
             (session &&
               (hash.includes('type=recovery') || search.includes('type=recovery')));
 
@@ -194,7 +192,7 @@ export const ClientLogin: React.FC = () => {
             setError('');
             setSuccess('');
             setView('reset');
-          } else if (event === 'SIGNED_IN' && !hash.includes('type=recovery')) {
+          } else if (event === 'SIGNED_IN' && !hash.includes('type=recovery') && !isStoredPasswordResetActive() && !isPasswordResetMode) {
             clearRecoveryUrlState();
             setStoredPasswordResetActive(false);
             setIsPasswordResetMode(false);
@@ -436,7 +434,7 @@ export const ClientLogin: React.FC = () => {
             : '');
 
         const cleanOrigin = origin.replace(/\/+$/, '');
-        const redirectTo = cleanOrigin ? `${cleanOrigin}/#/client` : undefined;
+        const redirectTo = cleanOrigin ? `${cleanOrigin}/` : undefined;
         console.log('Sending Supabase password reset with redirectTo:', redirectTo);
 
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(

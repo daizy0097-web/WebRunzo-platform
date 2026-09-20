@@ -58,7 +58,7 @@ import {
   canUploadFile,
   formatBytes,
 } from '../utils/storageUtils';
-import { supabase, isSupabaseConfigured, getProfile } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getProfile, getAuthErrorFromUrl } from '../lib/supabase';
 import {
   fetchApplicationData,
   dbAddTemplate,
@@ -438,10 +438,10 @@ function parseUrlToState(): {
 
   // Supabase password recovery links return through the URL hash/search or persisted session
   const isPasswordRecovery =
-    fullPath.includes('access_token=') ||
     fullPath.includes('type=recovery') ||
     checkIsRecoveryInUrl() ||
-    isStoredPasswordResetActive();
+    isStoredPasswordResetActive() ||
+    Boolean(getAuthErrorFromUrl());
 
   if (isPasswordRecovery) {
     return {
@@ -559,6 +559,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     nextAdminTab: AdminTab
   ) => {
     if (isPopstateEventRef.current) return;
+    if (checkIsRecoveryInUrl() || isStoredPasswordResetActive()) return;
     const targetUrl = getUrlForState(nextExp, nextPubPage, nextClientTab, nextAdminTab);
     if (typeof window !== 'undefined') {
       const currentHash = window.location.hash || '#/';
