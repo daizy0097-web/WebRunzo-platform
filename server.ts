@@ -5,7 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import Razorpay from 'razorpay';
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const app = express();
 
 // Supabase environment variables
@@ -2274,6 +2274,18 @@ app.post('/api/client/onboarding', async (req, res) => {
       error: err?.message || 'Server error during onboarding submission.',
     });
   }
+});
+
+// Runtime public client environment configuration endpoint
+// Serves ONLY public variables (never service role or payment secrets)
+app.get('/env.js', (_req, res) => {
+  const publicConfig = {
+    VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || '',
+    VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || '',
+  };
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  return res.send(`window.__WEBRUNZO_CONFIG__ = ${JSON.stringify(publicConfig)};`);
 });
 
 // Vite middleware & Static serving

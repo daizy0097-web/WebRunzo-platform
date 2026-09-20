@@ -20,7 +20,7 @@ export const HeroSection: React.FC = () => {
   };
 
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900/60 to-slate-950 pt-12 pb-20 sm:pt-20 sm:pb-28 border-b border-slate-800/80">
+    <section id="hero" className="relative overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900/60 to-slate-950 pt-12 pb-20 sm:pt-20 sm:pb-28 border-b border-slate-800/80">
       {/* Subtle Background Glows */}
       <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-indigo-600/15 blur-[140px] rounded-full pointer-events-none -z-10" />
       <div className="absolute top-40 right-1/4 w-[400px] h-[300px] bg-blue-500/10 blur-[130px] rounded-full pointer-events-none -z-10" />
@@ -31,7 +31,7 @@ export const HeroSection: React.FC = () => {
           {/* Eyebrow badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs font-bold tracking-wide uppercase shadow-sm">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Turnkey Website Solutions & Infrastructure</span>
+            <span>Turnkey Websites & Infrastructure</span>
           </div>
 
           {/* Main Headline */}
@@ -47,21 +47,21 @@ export const HeroSection: React.FC = () => {
           {/* CTA Buttons */}
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
-              id="hero-btn-explore-templates"
-              onClick={scrollToTemplates}
+              id="hero-btn-get-started"
+              onClick={() => openEnquiryModal()}
               className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold text-sm px-7 py-3.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
-              <Layout className="w-4 h-4" />
-              <span>Explore All Templates</span>
+              <span>Get Started</span>
+              <ArrowRight className="w-4 h-4 text-white" />
             </button>
 
             <button
-              id="hero-btn-get-started"
-              onClick={() => openEnquiryModal()}
+              id="hero-btn-explore-templates"
+              onClick={scrollToTemplates}
               className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-100 border border-slate-700/80 hover:border-slate-600 font-bold text-sm px-7 py-3.5 rounded-xl shadow-sm hover:shadow transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
-              <span>Get Started</span>
-              <ArrowRight className="w-4 h-4 text-indigo-400" />
+              <Layout className="w-4 h-4 text-slate-400" />
+              <span>Explore All Templates</span>
             </button>
           </div>
 
@@ -88,20 +88,20 @@ export const HeroSection: React.FC = () => {
 
         {/* Hero Interactive Showcase Mockup */}
         <div className="mt-14 max-w-5xl mx-auto rounded-2xl bg-slate-900 p-2 sm:p-3 shadow-2xl border border-slate-800 overflow-hidden relative group">
-          <div className="bg-slate-800/90 rounded-xl px-4 py-2 flex items-center justify-between border-b border-slate-700/60 mb-2">
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1.5">
+          <div className="bg-slate-800/90 rounded-xl px-4 py-2 flex items-center justify-between border-b border-slate-700/60 mb-2 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex gap-1.5 shrink-0">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
               </div>
-              <span className="text-xs font-mono text-slate-300 ml-2">https://preview.webrunzo.app/marketplace</span>
+              <span className="text-xs font-mono text-slate-300 ml-2 truncate hidden sm:inline-block">https://preview.webrunzo.app/marketplace</span>
             </div>
             <button
               onClick={() => openPreviewModal(templates[0])}
-              className="text-xs text-indigo-300 hover:text-white flex items-center gap-1 font-semibold"
+              className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 shrink-0"
             >
-              <Play className="w-3 h-3 fill-indigo-400" />
+              <Play className="w-3 h-3 fill-current text-white" />
               <span>Launch Interactive Preview</span>
             </button>
           </div>
@@ -120,7 +120,7 @@ export const HeroSection: React.FC = () => {
                     className="w-full h-full object-cover group-hover/card:scale-105 transition duration-300"
                     loading="lazy"
                   />
-                  <span className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                  <span className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-xs font-bold px-2.5 py-0.5 rounded-md">
                     {tpl.category}
                   </span>
                 </div>

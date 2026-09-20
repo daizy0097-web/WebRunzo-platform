@@ -39,7 +39,7 @@ export const PricingSection: React.FC = () => {
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-3xl p-7 sm:p-8 flex flex-col justify-between transition-all duration-200 ${
+                className={`relative rounded-2xl p-7 sm:p-8 flex flex-col justify-between transition-all duration-200 ${
                   isPopular
                     ? 'bg-slate-900 text-white shadow-2xl ring-2 ring-indigo-500 md:-translate-y-2 border border-indigo-500/40'
                     : 'bg-slate-900/90 text-white border border-slate-800 shadow-xl hover:border-slate-700'

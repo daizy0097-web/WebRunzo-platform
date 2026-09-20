@@ -39,20 +39,20 @@ export const DemoHeaderBar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-3">
         {/* Left: Brand / Supabase Auth Status */}
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold uppercase text-[10px]">
-            <Sparkles className="w-3 h-3 text-indigo-400" />
-            <span>WebRunzo Platform</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold uppercase text-xs">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>WebRunzo</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-[10px] font-mono">
-            <Database className="w-3 h-3 text-emerald-400" />
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-xs font-mono">
+            <Database className="w-3.5 h-3.5 text-emerald-400" />
             <span className={isSupabaseConfigured ? 'text-emerald-400' : 'text-amber-400'}>
               {isSupabaseConfigured ? 'Supabase RLS Active' : 'Supabase Inactive'}
             </span>
           </div>
 
           <span className="text-slate-600 hidden sm:inline">|</span>
-          <span className="text-slate-300 hidden md:inline text-[11px]">
+          <span className="text-slate-300 hidden md:inline text-xs">
             Session: <strong className="text-white capitalize font-mono">{session.role.replace('_', ' ')}</strong>
             {session.email && <span className="text-slate-400 ml-1">({session.email})</span>}
           </span>

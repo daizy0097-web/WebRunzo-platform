@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Sparkles, 
@@ -15,20 +15,83 @@ import {
 export const PublicNavbar: React.FC = () => {
   const { 
     setCurrentExperience, 
+    publicPage,
     setPublicPage,
     openEnquiryModal,
     openConciergeModal,
     session 
   } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<string>('home');
+
+  useEffect(() => {
+    if (publicPage !== 'home') {
+      setActiveSection('');
+      return;
+    }
+
+    const sectionIds = [
+      'hero',
+      'why-webrunzo',
+      'services',
+      'how-it-works',
+      'templates',
+      'pricing',
+      'about',
+      'faq',
+      'contact',
+    ];
+
+    const handleScroll = () => {
+      if (window.scrollY < 120) {
+        setActiveSection('home');
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (window.scrollY < 120) {
+          setActiveSection('home');
+          return;
+        }
+
+        const intersecting = entries.filter((entry) => entry.isIntersecting);
+        if (intersecting.length > 0) {
+          const topEntry = intersecting.sort(
+            (a, b) => Math.abs(a.boundingClientRect.top) - Math.abs(b.boundingClientRect.top)
+          )[0];
+          const id = topEntry.target.id;
+          setActiveSection(id === 'hero' ? 'home' : id);
+        }
+      },
+      {
+        rootMargin: '-20% 0px -65% 0px',
+      }
+    );
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      observer.disconnect();
+    };
+  }, [publicPage]);
 
   const navigateToHome = () => {
+    setActiveSection('home');
     setPublicPage('home');
     setMobileMenuOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const scrollToSection = (id: string) => {
+    setActiveSection(id);
     setPublicPage('home');
     setMobileMenuOpen(false);
     setTimeout(() => {
@@ -37,6 +100,24 @@ export const PublicNavbar: React.FC = () => {
         element.scrollIntoView({ behavior: 'smooth' });
       }
     }, 50);
+  };
+
+  const getDesktopLinkClass = (section: string) => {
+    const isActive = activeSection === section;
+    return `cursor-pointer transition-colors duration-150 relative py-1 text-xs ${
+      isActive
+        ? 'text-white font-bold after:absolute after:-bottom-1 after:left-0 after:right-0 after:h-0.5 after:bg-indigo-500 after:rounded-full'
+        : 'text-slate-400 hover:text-slate-200 font-semibold'
+    }`;
+  };
+
+  const getMobileLinkClass = (section: string) => {
+    const isActive = activeSection === section;
+    return `block w-full text-left py-2 px-3 rounded-r-lg transition-colors cursor-pointer text-sm ${
+      isActive
+        ? 'bg-slate-800/80 text-indigo-400 border-l-2 border-indigo-500 font-bold'
+        : 'text-slate-300 hover:text-indigo-400 border-l-2 border-transparent font-semibold'
+    }`;
   };
 
   return (
@@ -53,38 +134,38 @@ export const PublicNavbar: React.FC = () => {
               <span className="text-lg sm:text-xl font-bold text-white tracking-tight leading-none">
                 Web<span className="text-indigo-400 font-semibold">Runzo</span>
               </span>
-              <span className="hidden sm:block text-[9px] text-slate-400 font-medium tracking-wider uppercase mt-0.5">Turnkey Websites</span>
+              <span className="hidden sm:block text-xs text-slate-400 font-medium tracking-wider uppercase mt-0.5">Turnkey Websites</span>
             </div>
           </div>
 
           {/* Desktop Navigation Links */}
-          <div className="hidden lg:flex items-center gap-8 text-xs font-semibold text-slate-300">
-            <button onClick={navigateToHome} className="hover:text-indigo-400 transition cursor-pointer">
+          <div className="hidden lg:flex items-center gap-8">
+            <button onClick={navigateToHome} className={getDesktopLinkClass('home')}>
               Home
             </button>
-            <button onClick={() => scrollToSection('why-webrunzo')} className="hover:text-indigo-400 transition">
+            <button onClick={() => scrollToSection('why-webrunzo')} className={getDesktopLinkClass('why-webrunzo')}>
               Why Us
             </button>
-            <button onClick={() => scrollToSection('services')} className="hover:text-indigo-400 transition">
+            <button onClick={() => scrollToSection('services')} className={getDesktopLinkClass('services')}>
               Services
             </button>
-            <button onClick={() => scrollToSection('how-it-works')} className="hover:text-indigo-400 transition">
+            <button onClick={() => scrollToSection('how-it-works')} className={getDesktopLinkClass('how-it-works')}>
               How It Works
             </button>
-            <button onClick={() => scrollToSection('templates')} className="hover:text-indigo-400 transition flex items-center gap-1">
+            <button onClick={() => scrollToSection('templates')} className={`${getDesktopLinkClass('templates')} flex items-center gap-1`}>
               <span>Templates</span>
-              <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold px-1.5 py-0.2 rounded-full">20</span>
+              <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold px-2 py-0.5 rounded-full">20</span>
             </button>
-            <button onClick={() => scrollToSection('pricing')} className="hover:text-indigo-400 transition">
+            <button onClick={() => scrollToSection('pricing')} className={getDesktopLinkClass('pricing')}>
               Pricing
             </button>
-            <button onClick={() => scrollToSection('about')} className="hover:text-indigo-400 transition">
+            <button onClick={() => scrollToSection('about')} className={getDesktopLinkClass('about')}>
               About
             </button>
-            <button onClick={() => scrollToSection('faq')} className="hover:text-indigo-400 transition">
+            <button onClick={() => scrollToSection('faq')} className={getDesktopLinkClass('faq')}>
               FAQ
             </button>
-            <button onClick={() => scrollToSection('contact')} className="hover:text-indigo-400 transition">
+            <button onClick={() => scrollToSection('contact')} className={getDesktopLinkClass('contact')}>
               Contact
             </button>
           </div>
@@ -131,30 +212,33 @@ export const PublicNavbar: React.FC = () => {
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-6 py-5 space-y-4 text-sm font-semibold text-slate-200 shadow-2xl animate-in fade-in slide-in-from-top-2">
-          <button onClick={() => scrollToSection('why-webrunzo')} className="block w-full text-left py-2 hover:text-indigo-400">
+        <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-6 py-5 space-y-2 text-sm shadow-2xl animate-in fade-in slide-in-from-top-2">
+          <button onClick={navigateToHome} className={getMobileLinkClass('home')}>
+            Home
+          </button>
+          <button onClick={() => scrollToSection('why-webrunzo')} className={getMobileLinkClass('why-webrunzo')}>
             Why WebRunzo
           </button>
-          <button onClick={() => scrollToSection('services')} className="block w-full text-left py-2 hover:text-indigo-400">
+          <button onClick={() => scrollToSection('services')} className={getMobileLinkClass('services')}>
             Services
           </button>
-          <button onClick={() => scrollToSection('how-it-works')} className="block w-full text-left py-2 hover:text-indigo-400">
+          <button onClick={() => scrollToSection('how-it-works')} className={getMobileLinkClass('how-it-works')}>
             How It Works
           </button>
-          <button onClick={() => scrollToSection('templates')} className="block w-full text-left py-2 hover:text-indigo-400 flex items-center justify-between">
+          <button onClick={() => scrollToSection('templates')} className={`${getMobileLinkClass('templates')} flex items-center justify-between`}>
             <span>Template Gallery</span>
             <span className="bg-indigo-500/20 text-indigo-300 text-xs px-2 py-0.5 rounded-full">20 Demo Templates</span>
           </button>
-          <button onClick={() => scrollToSection('pricing')} className="block w-full text-left py-2 hover:text-indigo-400">
+          <button onClick={() => scrollToSection('pricing')} className={getMobileLinkClass('pricing')}>
             Pricing Plans
           </button>
-          <button onClick={() => scrollToSection('about')} className="block w-full text-left py-2 hover:text-indigo-400">
+          <button onClick={() => scrollToSection('about')} className={getMobileLinkClass('about')}>
             About WebRunzo
           </button>
-          <button onClick={() => scrollToSection('faq')} className="block w-full text-left py-2 hover:text-indigo-400">
+          <button onClick={() => scrollToSection('faq')} className={getMobileLinkClass('faq')}>
             FAQ
           </button>
-          <button onClick={() => scrollToSection('contact')} className="block w-full text-left py-2 hover:text-indigo-400">
+          <button onClick={() => scrollToSection('contact')} className={getMobileLinkClass('contact')}>
             Contact Us
           </button>
 

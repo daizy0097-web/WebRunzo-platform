@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAgentAvailability } from '../../utils/agentAvailability';
 import { 
@@ -15,13 +15,45 @@ import {
 } from 'lucide-react';
 
 export const FloatingWhatsApp: React.FC = () => {
-  const { settings, addToast, isConciergeOpen, setIsConciergeOpen } = useApp();
+  const { 
+    settings, 
+    addToast, 
+    isConciergeOpen, 
+    setIsConciergeOpen,
+    previewModal,
+    enquiryModal
+  } = useApp();
   const [localIsOpen, setLocalIsOpen] = useState(false);
   const [message, setMessage] = useState(settings.whatsAppDefaultMessage);
   const availability = useAgentAvailability(settings);
+  const widgetRef = useRef<HTMLElement>(null);
 
   // Sync with global isConciergeOpen if triggered from elsewhere
   const isOpen = isConciergeOpen || localIsOpen;
+
+  // Click-outside listener to dismiss the expanded panel safely on mobile and desktop
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (widgetRef.current && !widgetRef.current.contains(event.target as Node)) {
+        closeDialog();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  // Hide the Floating Support widget whenever PreviewModal or EnquiryModal is open
+  if (previewModal.isOpen || enquiryModal.isOpen) {
+    return null;
+  }
 
   const toggleOpen = () => {
     if (isConciergeOpen) {
@@ -78,6 +110,7 @@ export const FloatingWhatsApp: React.FC = () => {
 
   return (
     <aside 
+      ref={widgetRef}
       id="support-concierge-widget"
       aria-label="Support & Concierge Quick Access" 
       className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 [bottom:calc(1rem+env(safe-area-inset-bottom,0px))] [right:calc(1rem+env(safe-area-inset-right,0px))]"

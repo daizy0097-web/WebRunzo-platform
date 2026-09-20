@@ -152,7 +152,7 @@ export const PublicFooter: React.FC = () => {
             © {new Date().getFullYear()} WebRunzo Digital Systems Inc. All rights reserved.
           </div>
           <div className="flex items-center gap-4">
-            <span>Powered by WebRunzo Platform Engine</span>
+            <span>Powered by WebRunzo Engine</span>
             <span>•</span>
             <span className="text-emerald-400 font-mono">System Status: All Systems Operational (99.99%)</span>
           </div>

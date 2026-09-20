@@ -22,11 +22,11 @@ export const PreviewModal: React.FC = () => {
           <div>
             <div className="font-extrabold text-sm text-white flex items-center gap-2">
               <span>{customer ? customer.businessName : template?.name || 'Live Preview'}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-normal">
+              <span className="text-xs px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-medium">
                 {customer ? 'Customer Website' : `${template?.category} Template`}
               </span>
             </div>
-            <div className="text-[10px] font-mono text-slate-400">
+            <div className="text-xs font-mono text-slate-400">
               {customer ? customer.websiteUrl : `preview.webrunzo.app/${template?.id || 'demo'}`}
             </div>
           </div>

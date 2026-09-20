@@ -487,8 +487,13 @@ if (fullPath.includes('privacy-policy') || fullPath.includes('privacy')) {
       adminTab: 'dashboard',
     };
   }
-  if (fullPath.startsWith('/admin') || fullPath.startsWith('admin')) {
-    const clean = fullPath.replace(/^\/?admin\/?/, '');
+  if (
+    fullPath.startsWith('/admin') ||
+    fullPath.startsWith('admin') ||
+    fullPath.startsWith('/owner') ||
+    fullPath.startsWith('owner')
+  ) {
+    const clean = fullPath.replace(/^\/?(admin|owner)(-login|\/login)?\/?/, '');
     const tabPart = clean.split('/')[0] as AdminTab;
     const validAdminTabs: AdminTab[] = [
       'dashboard', 'customers', 'customer-profile', 'orders', 'websites', 'storage',

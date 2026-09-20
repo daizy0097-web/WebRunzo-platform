@@ -93,7 +93,7 @@ export const ServiceLevelAgreement: React.FC = () => {
               <div className="bg-slate-900/80 p-4 rounded-xl border border-amber-500/40 space-y-2">
                 <div className="font-bold text-white text-sm flex items-center justify-between">
                   <span>VIP Enterprise</span>
-                  <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">VIP</span>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-md font-bold whitespace-nowrap">VIP</span>
                 </div>
                 <div className="text-amber-400 font-mono font-bold text-lg">Under 2 Hours</div>
                 <p className="text-slate-400 text-xs">

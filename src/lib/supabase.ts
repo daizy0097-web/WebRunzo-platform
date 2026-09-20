@@ -1,13 +1,21 @@
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
-const supabaseUrl = 
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 
-  '';
-const supabaseAnonKey = 
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) || 
-  '';
+// Resolve configuration: priority 1 = runtime window.__WEBRUNZO_CONFIG__, priority 2 = import.meta.env, priority 3 = process.env
+const getRuntimeConfig = (key: 'VITE_SUPABASE_URL' | 'VITE_SUPABASE_ANON_KEY'): string => {
+  if (typeof window !== 'undefined' && window.__WEBRUNZO_CONFIG__ && window.__WEBRUNZO_CONFIG__[key]) {
+    return window.__WEBRUNZO_CONFIG__[key] || '';
+  }
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+    return import.meta.env[key] || '';
+  }
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key] || '';
+  }
+  return '';
+};
+
+const supabaseUrl = getRuntimeConfig('VITE_SUPABASE_URL');
+const supabaseAnonKey = getRuntimeConfig('VITE_SUPABASE_ANON_KEY');
 
 // Validate that credentials exist and are non-placeholder
 export const isSupabaseConfigured = Boolean(
