@@ -172,12 +172,21 @@ export const PublicNavbar: React.FC = () => {
 
           {/* Right Action CTA & Portal Links */}
           <div className="hidden sm:flex items-center gap-3">
-            {session.role !== 'guest' && (
+            {session.role !== 'guest' ? (
               <button
+                id="btn-nav-portal"
                 onClick={() => setCurrentExperience(session.role === 'admin' ? 'admin' : 'client')}
                 className="text-xs font-bold text-slate-200 hover:text-white px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 border border-slate-700/80 hover:border-slate-600 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
               >
                 {session.role === 'admin' ? 'Admin Portal' : 'Client Portal'}
+              </button>
+            ) : (
+              <button
+                id="btn-nav-client-login"
+                onClick={() => setCurrentExperience('client')}
+                className="text-xs font-bold text-slate-300 hover:text-white px-3.5 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 active:bg-slate-950 border border-slate-700/80 hover:border-slate-600 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              >
+                Client Login
               </button>
             )}
             
