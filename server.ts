@@ -8,6 +8,9 @@ import Razorpay from 'razorpay';
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const app = express();
 
+// Trust reverse proxy (Cloud Run / Nginx) for accurate client IP resolution
+app.set('trust proxy', 1);
+
 // Supabase environment variables
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
@@ -136,6 +139,149 @@ app.use(
   })
 );
 
+// =============================================================================
+// RATE LIMITING ARCHITECTURE (WR-01)
+// =============================================================================
+interface RateLimiterOptions {
+  windowMs: number;
+  max: number;
+  message?: string;
+  keyGenerator?: (req: express.Request) => string;
+}
+
+interface RateLimitRecord {
+  count: number;
+  resetTime: number;
+}
+
+/**
+ * Creates an in-memory sliding-window rate limiter compatible with Cloud Run.
+ * Uses authenticated User/Token identity when present, falling back to client IP.
+ */
+const createRateLimiter = (options: RateLimiterOptions) => {
+  const { windowMs, max, message } = options;
+  const store = new Map<string, RateLimitRecord>();
+
+  // Periodic cleanup of expired records (every 60s) to prevent memory growth
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of store.entries()) {
+      if (now >= record.resetTime) {
+        store.delete(key);
+      }
+    }
+  }, 60000);
+  cleanupInterval.unref?.();
+
+  const defaultKeyGenerator = (req: express.Request): string => {
+    // Priority: authenticated caller Bearer token hash
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7).trim();
+      if (token) {
+        const hash = crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
+        return `auth:${hash}`;
+      }
+    }
+    // Fallback: client IP from proxy headers or remote socket
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = typeof forwarded === 'string'
+      ? forwarded.split(',')[0].trim()
+      : Array.isArray(forwarded)
+        ? forwarded[0].trim()
+        : req.socket.remoteAddress || req.ip || '127.0.0.1';
+    return `ip:${ip}`;
+  };
+
+  const keyGen = options.keyGenerator || defaultKeyGenerator;
+
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const now = Date.now();
+    const key = keyGen(req);
+    let record = store.get(key);
+
+    if (!record || now >= record.resetTime) {
+      record = {
+        count: 1,
+        resetTime: now + windowMs,
+      };
+      store.set(key, record);
+    } else {
+      record.count += 1;
+    }
+
+    const remaining = Math.max(0, max - record.count);
+    const retryAfterSec = Math.max(1, Math.ceil((record.resetTime - now) / 1000));
+
+    res.setHeader('X-RateLimit-Limit', max);
+    res.setHeader('X-RateLimit-Remaining', remaining);
+    res.setHeader('X-RateLimit-Reset', Math.ceil(record.resetTime / 1000));
+
+    if (record.count > max) {
+      res.setHeader('Retry-After', retryAfterSec);
+      return res.status(429).json({
+        success: false,
+        code: 'RATE_LIMIT_EXCEEDED',
+        error: message || `Too many requests. Please try again in ${retryAfterSec} seconds.`,
+        retryAfter: retryAfterSec,
+      });
+    }
+
+    next();
+  };
+};
+
+// 1. Stricter Limit: Payment Order Creation (20 requests / 15 minutes per IP/User)
+const paymentCreateOrderLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many payment order creation requests. Please try again later.',
+});
+
+// 2. Payment Verification (30 requests / 15 minutes per IP/User)
+const paymentVerifyLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: 'Too many payment verification attempts. Please try again later.',
+});
+
+// 3. Razorpay Webhook Listener (120 requests / 1 minute per IP - prevents spam while allowing bursts & retries)
+const paymentWebhookLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: 'Webhook delivery rate limit exceeded.',
+  keyGenerator: (req) => {
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = typeof forwarded === 'string'
+      ? forwarded.split(',')[0].trim()
+      : Array.isArray(forwarded)
+        ? forwarded[0].trim()
+        : req.socket.remoteAddress || req.ip || '127.0.0.1';
+    return `webhook:${ip}`;
+  },
+});
+
+// 4. Admin Lead Conversion (30 requests / 5 minutes per authenticated Admin)
+const adminConvertLeadLimiter = createRateLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  message: 'Too many lead conversion requests. Please try again later.',
+});
+
+// 5. Admin Order Status Updates (60 requests / 5 minutes per authenticated Admin)
+const adminOrderUpdateLimiter = createRateLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 60,
+  message: 'Too many order status update requests. Please try again later.',
+});
+
+// 6. Client Site Redeployments (10 requests / 15 minutes per authenticated Client)
+const clientRedeployLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Redeploy rate limit exceeded. Please wait before triggering another production build.',
+});
+
 // API: Health Check
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -146,7 +292,23 @@ app.get('/api/health', (_req, res) => {
 });
 
 // API: Lead to Client Conversion (Admin Only)
-app.post('/api/admin/convert-lead', async (req, res) => {
+app.post('/api/admin/convert-lead', adminConvertLeadLimiter, async (req, res) => {
+  const ADMIN_EMAIL = 'hello.webrunzo@gmail.com';
+  let isNewAuthUser = false;
+  let authUserId: string | null = null;
+  let supabaseAdmin: any = null;
+
+  const cleanupNewAuthUser = async (reason: string) => {
+    if (isNewAuthUser && authUserId && supabaseAdmin) {
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        console.log(`[convert-lead] Cleaned up newly created auth user ${authUserId} (${reason})`);
+      } catch (cleanupErr: any) {
+        console.warn(`[convert-lead] Failed to cleanup newly created auth user ${authUserId} (${reason}):`, cleanupErr?.message);
+      }
+    }
+  };
+
   try {
     // -------------------------------------------------------------------------
     // 1. AUTHENTICATE CALLER & ENFORCE ADMIN ROLE
@@ -180,11 +342,28 @@ app.post('/api/admin/convert-lead', async (req, res) => {
       .eq('id', authUserData.user.id)
       .maybeSingle();
 
-    if (profileErr || !callerProfile || callerProfile.role !== 'admin') {
+    if (profileErr) {
+      console.error('Database error verifying caller profile in convert-lead:', profileErr);
+      return res.status(500).json({
+        success: false,
+        code: 'PROFILE_VERIFICATION_ERROR',
+        error: `Database error while verifying administrator profile: ${profileErr.message || 'Unknown database error'}`,
+      });
+    }
+
+    if (!callerProfile) {
       return res.status(403).json({
         success: false,
         code: 'FORBIDDEN',
-        error: 'Forbidden: Only administrators can convert leads to client accounts.',
+        error: 'Forbidden: Administrator profile does not exist in the database.',
+      });
+    }
+
+    if (callerProfile.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        error: `Forbidden: Account role "${callerProfile.role}" is not authorized as an administrator.`,
       });
     }
 
@@ -211,7 +390,7 @@ app.post('/api/admin/convert-lead', async (req, res) => {
       return res.status(500).json({
         success: false,
         code: 'ENQUIRY_LOOKUP_ERROR',
-        error: 'Database operation failed during enquiry lookup. Please try again.',
+        error: `Database operation failed during enquiry lookup: ${enqFetchErr.message || 'Unknown database error'}`,
       });
     }
 
@@ -244,7 +423,6 @@ app.post('/api/admin/convert-lead', async (req, res) => {
     }
 
     // Prevent collision with Admin email
-    const ADMIN_EMAIL = 'hello.webrunzo@gmail.com';
     if (email === ADMIN_EMAIL.toLowerCase() || email === (authUserData.user.email || '').toLowerCase()) {
       return res.status(400).json({
         success: false,
@@ -276,7 +454,7 @@ app.post('/api/admin/convert-lead', async (req, res) => {
       });
     }
 
-    let authUserId: string | null = existingProfByEmail?.id || null;
+    authUserId = existingProfByEmail?.id || null;
     let actionLink: string | null = null;
     let invitationSent = false;
     const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
@@ -286,7 +464,7 @@ app.post('/api/admin/convert-lead', async (req, res) => {
     // 4. AUTH PROVISIONING (SERVER-SIDE ADMIN API) - EXECUTED BEFORE MUTATIONS
     // -------------------------------------------------------------------------
     const adminCheck = getAdminClient();
-    const supabaseAdmin = adminCheck.client;
+    supabaseAdmin = adminCheck.client;
 
     if (!authUserId) {
       // User does not exist in profiles yet - requires service-role admin client to provision Auth user
@@ -345,64 +523,77 @@ app.post('/api/admin/convert-lead', async (req, res) => {
           console.warn('Note on generateLink for existing auth user:', linkGenErr?.message);
         }
       } else {
-        // Attempt 1: inviteUserByEmail (Official Supabase invitation flow)
-        const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-          data: {
+        // Attempt: createUser with pre-confirmed email via Supabase admin API
+        // Avoids failures from external SMTP delivery, dummy domain rejections, and rate limits
+        const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+          email,
+          email_confirm: true,
+          user_metadata: {
             full_name: enquiry.name || 'Client',
             role: 'client',
             client_tier: clientTier,
           },
-          redirectTo: redirectUrl,
         });
 
-        if (!inviteErr && inviteData?.user) {
-          authUserId = inviteData.user.id;
-          invitationSent = true;
-        } else {
-          console.warn('inviteUserByEmail notification:', inviteErr?.message);
-          const isAlreadyRegistered =
-            (inviteErr?.message || '').toLowerCase().includes('already') ||
-            (inviteErr?.message || '').toLowerCase().includes('registered');
-
-          if (isAlreadyRegistered) {
-            // Account exists in auth: generate recovery link
-            const { data: recData, error: recErr } = await supabaseAdmin.auth.admin.generateLink({
+        if (!createErr && createData?.user) {
+          authUserId = createData.user.id;
+          isNewAuthUser = true;
+          try {
+            const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
               type: 'recovery',
               email,
               options: { redirectTo: redirectUrl },
             });
-            if (!recErr && recData?.user) {
-              authUserId = recData.user.id;
-              actionLink = recData.properties?.action_link || null;
+            if (!linkErr && linkData?.properties?.action_link) {
+              actionLink = linkData.properties.action_link;
+            }
+          } catch (linkGenErr: any) {
+            console.warn('Note on generateLink for newly created user:', linkGenErr?.message);
+          }
+        } else {
+          console.warn('createUser notice:', createErr?.message);
+          const isAlreadyRegistered =
+            createErr?.code === 'email_exists' ||
+            (createErr?.message || '').toLowerCase().includes('already') ||
+            (createErr?.message || '').toLowerCase().includes('registered');
+
+          if (isAlreadyRegistered) {
+            // Account already exists in auth: resolve by exact email via recovery link generation
+            try {
+              const { data: recData, error: recErr } = await supabaseAdmin.auth.admin.generateLink({
+                type: 'recovery',
+                email,
+                options: { redirectTo: redirectUrl },
+              });
+              if (!recErr && recData?.user) {
+                authUserId = recData.user.id;
+                actionLink = recData.properties?.action_link || null;
+              }
+            } catch (recErr: any) {
+              console.warn('generateLink recovery lookup error:', recErr?.message);
+            }
+
+            if (!authUserId) {
+              // Direct directory lookup fallback for exact email match
+              try {
+                const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+                const matched = (listData?.users || []).find((u) => u.email?.toLowerCase() === email);
+                if (matched) {
+                  authUserId = matched.id;
+                }
+              } catch (listErr: any) {
+                console.warn('Fallback listUsers failed:', listErr?.message);
+              }
             }
           }
 
           if (!authUserId) {
-            // Attempt 2: generateLink with type 'invite'
-            const { data: genData, error: genErr } = await supabaseAdmin.auth.admin.generateLink({
-              type: 'invite',
-              email,
-              options: {
-                data: {
-                  full_name: enquiry.name || 'Client',
-                  role: 'client',
-                  client_tier: clientTier,
-                },
-                redirectTo: redirectUrl,
-              },
+            // Creation and resolution failed: STOP BEFORE CREATING ANY DATABASE RECORDS
+            return res.status(500).json({
+              success: false,
+              code: 'AUTH_PROVISION_FAILED',
+              error: `Failed to provision client authentication account: ${createErr?.message || 'Unknown error'}`,
             });
-
-            if (!genErr && genData?.user) {
-              authUserId = genData.user.id;
-              actionLink = genData.properties?.action_link || null;
-            } else {
-              // Both attempts failed: STOP BEFORE CREATING ANY DATABASE RECORDS
-              return res.status(500).json({
-                success: false,
-                code: 'AUTH_PROVISION_FAILED',
-                error: `Failed to provision client authentication account: ${inviteErr?.message || genErr?.message}`,
-              });
-            }
           }
         }
       }
@@ -453,17 +644,25 @@ app.post('/api/admin/convert-lead', async (req, res) => {
 
     if (rpcError) {
       console.error('convert_enquiry_to_customer_atomic RPC error:', rpcError);
+      await cleanupNewAuthUser('RPC error');
+
       const isMissingRpc = rpcError.code === 'PGRST202';
-      return res.status(isMissingRpc ? 501 : 500).json({
+      const isAuthError = rpcError.code === '42501' || (rpcError.message || '').toLowerCase().includes('permission denied');
+      const statusCode = isMissingRpc ? 501 : isAuthError ? 403 : 500;
+
+      return res.status(statusCode).json({
         success: false,
-        code: isMissingRpc ? 'RPC_MIGRATION_REQUIRED' : 'DATABASE_OPERATION_FAILED',
+        code: isMissingRpc ? 'RPC_MIGRATION_REQUIRED' : (rpcError.code || 'DATABASE_OPERATION_FAILED'),
         error: isMissingRpc
           ? 'Database conversion function "convert_enquiry_to_customer_atomic" is not installed in the schema cache. Please execute migration 20260915_atomic_lead_conversion.sql in your Supabase SQL Editor.'
-          : 'Database conversion failed. Please try again.',
+          : `Database conversion failed: ${rpcError.message || 'Please try again.'}`,
+        detail: rpcError.details || rpcError.hint,
       });
     }
 
     if (!rpcResult || rpcResult.success === false) {
+      await cleanupNewAuthUser('RPC failure result');
+
       const errCode = rpcResult?.code || 'CONVERSION_TRANSACTION_FAILED';
       const errMsg = rpcResult?.error || 'Database conversion transaction failed to complete.';
       const statusCode =
@@ -539,6 +738,7 @@ app.post('/api/admin/convert-lead', async (req, res) => {
     });
   } catch (err: any) {
     console.error('Unexpected error in convert-lead API:', err);
+    await cleanupNewAuthUser('Unexpected catch error');
     return res.status(500).json({
       success: false,
       code: 'SERVER_ERROR',
@@ -558,7 +758,7 @@ app.post('/api/admin/convert-lead', async (req, res) => {
 // Enforces Admin Role authorization, prevents arbitrary jumping, and updates
 // both database order status, milestone pipeline, and client notifications.
 // =============================================================================
-app.post('/api/admin/orders/update-status', async (req, res) => {
+app.post('/api/admin/orders/update-status', adminOrderUpdateLimiter, async (req, res) => {
   try {
     // 1. Authenticate caller & verify Admin role
     const authHeader = req.headers.authorization;
@@ -841,7 +1041,7 @@ app.post('/api/admin/orders/update-status', async (req, res) => {
 // =============================================================================
 // API: Razorpay Order Creation (Client Plan Checkout / Upgrade)
 // =============================================================================
-app.post('/api/payments/create-order', async (req, res) => {
+app.post('/api/payments/create-order', paymentCreateOrderLimiter, async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -1052,7 +1252,7 @@ app.post('/api/payments/create-order', async (req, res) => {
 // =============================================================================
 // API: Razorpay Payment Signature Verification (Server-Side)
 // =============================================================================
-app.post('/api/payments/verify-payment', async (req, res) => {
+app.post('/api/payments/verify-payment', paymentVerifyLimiter, async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -1431,7 +1631,7 @@ app.post('/api/payments/verify-payment', async (req, res) => {
 // =============================================================================
 // API: Razorpay Webhook Listener (Raw Body Verified)
 // =============================================================================
-app.post('/api/payments/webhook', async (req: any, res) => {
+app.post('/api/payments/webhook', paymentWebhookLimiter, async (req: any, res) => {
   const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
 
   // If Razorpay webhook secret is unconfigured, reject with 503 configuration error
@@ -1721,7 +1921,7 @@ app.post('/api/payments/webhook', async (req: any, res) => {
 // =============================================================================
 // API: Client Website Production Redeploy & Edge CDN Purge
 // =============================================================================
-app.post('/api/client/redeploy', async (req, res) => {
+app.post('/api/client/redeploy', clientRedeployLimiter, async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -1748,6 +1948,15 @@ app.post('/api/client/redeploy', async (req, res) => {
       .select('*')
       .eq('id', authUserData.user.id)
       .maybeSingle();
+
+    // If client attempts to target a customerId different from their own, explicitly deny with 403 Forbidden
+    if (req.body.customerId && profile?.role !== 'admin' && req.body.customerId !== profile?.customer_id) {
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        error: 'Access denied: You cannot trigger deployments for another client account.',
+      });
+    }
 
     const targetCustomerId =
       profile?.role === 'admin' && req.body.customerId
@@ -2286,6 +2495,15 @@ app.get('/env.js', (_req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   return res.send(`window.__WEBRUNZO_CONFIG__ = ${JSON.stringify(publicConfig)};`);
+});
+
+// Explicit 404 for unmatched API requests so they do not fall through to SPA HTML
+app.all('/api/*', (_req, res) => {
+  res.status(404).json({
+    success: false,
+    code: 'NOT_FOUND',
+    error: 'API endpoint not found',
+  });
 });
 
 // Vite middleware & Static serving
