@@ -1,29 +1,63 @@
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
-import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import Razorpay from 'razorpay';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const app = express();
 
-// Trust reverse proxy (Cloud Run / Nginx) for accurate client IP resolution
+// Trust reverse proxy (Cloud Run / Nginx / Vercel) for accurate client IP resolution
 app.set('trust proxy', 1);
 
-// Supabase environment variables
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Supabase environment variables (support standard and VITE_ prefixed versions)
+const getSupabaseConfig = () => {
+  const url = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+  const anonKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  return { url, anonKey, serviceRoleKey };
+};
 
-// 1. Client with anon key for public and caller JWT token validation
-const supabaseAnon = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
+// 1. Lazy client with anon key for public and caller JWT token validation
+let _supabaseAnon: any = null;
+const getSupabaseAnon = () => {
+  if (!_supabaseAnon) {
+    const { url, anonKey } = getSupabaseConfig();
+    if (url && anonKey) {
+      _supabaseAnon = createClient(url, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+    }
+  }
+  return _supabaseAnon;
+};
+
+// Transparent proxy so all existing `supabaseAnon.auth.getUser(...)` calls work seamlessly without throwing during server startup
+const supabaseAnon: any = new Proxy({} as any, {
+  get(_target, prop) {
+    const client = getSupabaseAnon();
+    if (!client) {
+      if (prop === 'auth') {
+        return {
+          getUser: async () => ({
+            data: { user: null },
+            error: new Error('Supabase client is not configured on the server.'),
+          }),
+        };
+      }
+      return undefined;
+    }
+    return client[prop];
+  },
 });
 
 // Helper to create an authenticated Supabase client on behalf of the verified caller (enforcing RLS)
 const getCallerClient = (token: string) => {
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  const { url, anonKey } = getSupabaseConfig();
+  if (!url || !anonKey) {
+    throw new Error('Supabase client is not configured on the server.');
+  }
+  return createClient(url, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
     global: {
       headers: {
@@ -42,7 +76,8 @@ interface AdminClientValidation {
 // 2. Privileged admin client with service_role key (STRICTLY SERVER-SIDE)
 // Used exclusively for server-side Auth Admin operations (user lookup, invitation, password setup link)
 const getAdminClient = (): AdminClientValidation => {
-  const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseServiceRoleKey || '';
+  const { url, serviceRoleKey } = getSupabaseConfig();
+  const rawKey = serviceRoleKey;
   const trimmedKey = rawKey.trim();
 
   if (!trimmedKey) {
@@ -74,8 +109,16 @@ const getAdminClient = (): AdminClientValidation => {
     };
   }
 
+  if (!url) {
+    return {
+      client: null,
+      code: 'CONFIG_BLOCKER',
+      error: 'Server configuration error: Supabase URL is not configured.',
+    };
+  }
+
   try {
-    const client = createClient(supabaseUrl, trimmedKey, {
+    const client = createClient(url, trimmedKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
     return { client };
@@ -2796,6 +2839,7 @@ app.all('/api/*', (_req, res) => {
 // Vite middleware & Static serving
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

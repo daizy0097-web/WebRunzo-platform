@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import app from '../server';
+import app from '../server.ts';
 
 // Disable automatic Vercel body parsing so Express handles raw request streaming
 // (required for Razorpay webhook cryptographic HMAC signature verification via req.rawBody)
@@ -10,13 +10,19 @@ export const config = {
 };
 
 export default function handler(req: IncomingMessage, res: ServerResponse) {
-  // Normalize incoming path for Express routing when rewritten by Vercel edge
-  const matchedPath = (req.headers['x-matched-path'] as string) || '';
-  if (matchedPath && (matchedPath.startsWith('/api') || matchedPath.startsWith('/env.js'))) {
-    req.url = matchedPath;
-  } else if (req.url && !req.url.startsWith('/api') && !req.url.startsWith('/env.js')) {
-    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
-  }
+  try {
+    // Ensure the path retains /api or /env.js for Express routing
+    if (req.url && !req.url.startsWith('/api') && !req.url.startsWith('/env.js')) {
+      req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+    }
 
-  return (app as any)(req, res);
+    return (app as any)(req, res);
+  } catch (err: any) {
+    console.error('[Vercel Handler Exception]:', err);
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Serverless Function Execution Error', message: err?.message || String(err) }));
+    }
+  }
 }
