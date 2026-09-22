@@ -2814,4 +2814,10 @@ async function startServer() {
   });
 }
 
-startServer();
+// Prevent app.listen() from running on Vercel serverless functions, keeping local dev and Docker working
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export { app };
+export default app;
