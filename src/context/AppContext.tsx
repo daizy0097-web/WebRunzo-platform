@@ -295,6 +295,10 @@ interface AppContextType {
   submitEnquiry: (enquiryData: Omit<Enquiry, 'id' | 'date' | 'status'>) => void;
   updateEnquiryStatus: (id: string, status: EnquiryStatus, adminNotes?: string) => void;
   convertEnquiryToCustomer: (enquiryId: string) => Promise<Customer | null>;
+  sendClientPasswordSetupLink: (
+    customerId: string,
+    actionType?: 'setup' | 'reset'
+  ) => Promise<{ success: boolean; actionLink?: string; message?: string; error?: string }>;
 
   updateSettings: (updates: Partial<AdminSettings>) => void;
   resetAllData: () => void;
@@ -2716,6 +2720,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const sendClientPasswordSetupLink = async (
+    customerId: string,
+    actionType: 'setup' | 'reset' = 'setup'
+  ): Promise<{ success: boolean; actionLink?: string; message?: string; error?: string }> => {
+    if (session.role !== 'admin') {
+      addToast('error', 'Unauthorized', 'Only administrators can manage client credentials.');
+      return { success: false, error: 'Unauthorized' };
+    }
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        addToast('error', 'Session Expired', 'Please re-authenticate as Admin.');
+        return { success: false, error: 'Session Expired' };
+      }
+      const response = await fetch('/api/admin/client-auth/send-link', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ customerId, actionType }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result.success) {
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === customerId
+              ? {
+                  ...c,
+                  authStatus: {
+                    passwordSetupStatus: 'Pending',
+                    lastLinkSentAt: result.lastLinkSentAt || new Date().toISOString(),
+                    lastActionType: actionType,
+                  },
+                  customContent: {
+                    ...c.customContent,
+                    authStatus: {
+                      passwordSetupStatus: 'Pending',
+                      lastLinkSentAt: result.lastLinkSentAt || new Date().toISOString(),
+                      lastActionType: actionType,
+                    },
+                  },
+                }
+              : c
+          )
+        );
+        addToast(
+          'success',
+          actionType === 'reset' ? 'Password Reset Triggered' : 'Setup Link Ready',
+          result.message || 'Client authentication link generated.'
+        );
+        return { success: true, actionLink: result.actionLink, message: result.message };
+      } else {
+        const errMsg = result.error || 'Failed to generate setup link.';
+        addToast('error', 'Authentication Control Failed', errMsg);
+        return { success: false, error: errMsg };
+      }
+    } catch (err: any) {
+      addToast('error', 'Network Error', err?.message || 'Failed to communicate with authentication service.');
+      return { success: false, error: err?.message };
+    }
+  };
+
   const updateSettings = (updates: Partial<AdminSettings>) => {
     setSettings((prev) => ({ ...prev, ...updates }));
     dbUpdateSettings(updates).catch((err) => {
@@ -2854,6 +2922,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitEnquiry,
         updateEnquiryStatus,
         convertEnquiryToCustomer,
+        sendClientPasswordSetupLink,
         updateSettings,
         resetAllData,
         previewModal,

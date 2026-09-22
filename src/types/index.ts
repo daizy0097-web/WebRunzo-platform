@@ -238,6 +238,15 @@ export interface ClientOnboardingData {
   additionalNotes?: string;
 }
 
+export type PasswordSetupStatus = 'Pending' | 'Completed';
+
+export interface ClientAuthStatus {
+  passwordSetupStatus: PasswordSetupStatus;
+  lastLinkSentAt?: string;
+  setupCompletedAt?: string;
+  lastActionType?: 'setup' | 'reset';
+}
+
 export interface ClientWebsiteContent {
   businessName: string;
   tagline: string;
@@ -260,11 +269,13 @@ export interface ClientWebsiteContent {
     whatsapp?: string;
   };
   onboarding?: ClientOnboardingData;
+  authStatus?: ClientAuthStatus;
 }
 
 export interface Customer {
   id: string;
   userId?: string;
+  authStatus?: ClientAuthStatus;
   name: string;
   businessName: string;
   email: string;

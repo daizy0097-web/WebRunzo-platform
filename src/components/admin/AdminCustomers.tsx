@@ -243,6 +243,7 @@ export const AdminCustomers: React.FC = () => {
               <tr className="border-b border-slate-800 bg-slate-900/60 text-slate-400 text-[10px] uppercase font-bold tracking-wider">
                 <th className="p-4 sm:px-6">Customer & Business</th>
                 <th className="p-4">Assigned Plan</th>
+                <th className="p-4">Password Setup</th>
                 <th className="p-4">Template</th>
                 <th className="p-4">Intake Status</th>
                 <th className="p-4">Account Status</th>
@@ -254,7 +255,7 @@ export const AdminCustomers: React.FC = () => {
             <tbody className="divide-y divide-slate-800/60">
               {paginatedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500">
+                  <td colSpan={9} className="p-8 text-center text-slate-500">
                     No customers found matching the selected filters.
                   </td>
                 </tr>
@@ -278,6 +279,21 @@ export const AdminCustomers: React.FC = () => {
                       <td className="p-4">
                         <div className="font-semibold text-slate-200">{plan?.name || 'Standard'}</div>
                         <div className="text-[10px] text-emerald-400">${plan?.annualPrice}/yr</div>
+                      </td>
+
+                      {/* Password Setup */}
+                      <td className="p-4">
+                        {cust.authStatus?.passwordSetupStatus === 'Completed' ? (
+                          <span className="text-[10px] px-2.5 py-1 rounded-full font-bold inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Completed</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-2.5 py-1 rounded-full font-bold inline-flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap">
+                            <Clock className="w-3 h-3" />
+                            <span>Pending</span>
+                          </span>
+                        )}
                       </td>
 
                       {/* Template */}

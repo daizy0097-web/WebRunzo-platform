@@ -608,7 +608,7 @@ export const ClientLogin: React.FC = () => {
         );
 
         /*
-         * Update password.
+         * Update password and mark password setup status as completed.
          */
         const {
           error:
@@ -618,6 +618,10 @@ export const ClientLogin: React.FC = () => {
             {
               password:
                 newPassword,
+              data: {
+                password_setup_status: 'completed',
+                setup_completed_at: new Date().toISOString(),
+              },
             }
           );
 
@@ -632,6 +636,22 @@ export const ClientLogin: React.FC = () => {
           );
 
           return;
+        }
+
+        try {
+          const { data: sessData } = await supabase.auth.getSession();
+          const sessToken = sessData?.session?.access_token;
+          if (sessToken) {
+            await fetch('/api/client/confirm-password-setup', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${sessToken}`,
+              },
+            });
+          }
+        } catch (confirmErr) {
+          console.warn('Note confirming password setup to server:', confirmErr);
         }
 
         console.log(

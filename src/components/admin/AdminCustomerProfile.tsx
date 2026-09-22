@@ -34,7 +34,12 @@ import {
   RefreshCw,
   ClipboardList,
   Palette,
-  Check
+  Check,
+  Copy,
+  RotateCcw,
+  Send,
+  KeyRound,
+  Shield
 } from 'lucide-react';
 
 export const AdminCustomerProfile: React.FC = () => {
@@ -50,7 +55,8 @@ export const AdminCustomerProfile: React.FC = () => {
     toggleWebsiteStatus,
     setAdminTab, 
     openPreviewModal,
-    addToast
+    addToast,
+    sendClientPasswordSetupLink
   } = useApp();
 
   const customer = customers.find((c) => c.id === selectedCustomerIdForAdmin);
@@ -111,6 +117,34 @@ export const AdminCustomerProfile: React.FC = () => {
   const rawOnboarding = customer.customContent?.onboarding;
   const [onboardingStatus, setOnboardingStatus] = useState<string>(rawOnboarding?.status || 'Not Started');
   const [adminOnboardingNotes, setAdminOnboardingNotes] = useState<string>(rawOnboarding?.adminNotes || '');
+
+  // Client Authentication & Password Link States
+  const [isAuthLinkLoading, setIsAuthLinkLoading] = useState(false);
+  const [activeGeneratedLink, setActiveGeneratedLink] = useState<string | null>(null);
+  const [hasCopiedAuthLink, setHasCopiedAuthLink] = useState(false);
+  const [showForceResetConfirm, setShowForceResetConfirm] = useState(false);
+
+  const handleSendAuthLink = async (actionType: 'setup' | 'reset') => {
+    setIsAuthLinkLoading(true);
+    setActiveGeneratedLink(null);
+    try {
+      const res = await sendClientPasswordSetupLink(customer.id, actionType);
+      if (res.success && res.actionLink) {
+        setActiveGeneratedLink(res.actionLink);
+      }
+    } finally {
+      setIsAuthLinkLoading(false);
+      setShowForceResetConfirm(false);
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (!activeGeneratedLink) return;
+    navigator.clipboard.writeText(activeGeneratedLink);
+    setHasCopiedAuthLink(true);
+    addToast('success', 'Link Copied', 'Password setup link copied to clipboard.');
+    setTimeout(() => setHasCopiedAuthLink(false), 3000);
+  };
 
   const handleToggleWebsiteControl = () => {
     toggleWebsiteStatus(
@@ -304,6 +338,115 @@ export const AdminCustomerProfile: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Card: Client Authentication & Access Security */}
+          <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-emerald-400" />
+                <span>Client Authentication & Access Security</span>
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-slate-400">Password Setup:</span>
+                {customer.authStatus?.passwordSetupStatus === 'Completed' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Completed</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Pending</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Zero-Knowledge Security Notice */}
+            <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 text-xs text-slate-300 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-slate-400 font-semibold text-[11px] uppercase tracking-wider">
+                <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Client Self-Owned Credential Policy</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                The client sets and owns their own private password. Plaintext passwords are never visible, retrievable, or stored for administrators. Access is established and refreshed strictly via encrypted, one-time authentication links.
+              </p>
+              {customer.authStatus?.lastLinkSentAt && (
+                <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-900 flex items-center gap-1.5">
+                  <Clock className="w-3 h-3" />
+                  <span>Last Link Generated: {new Date(customer.authStatus.lastLinkSentAt).toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Link Generation Actions */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-1">
+              <button
+                type="button"
+                id="btn-send-password-setup-link"
+                disabled={isAuthLinkLoading}
+                onClick={() => handleSendAuthLink('setup')}
+                className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white font-bold text-xs rounded-xl border border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isAuthLinkLoading ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5 text-emerald-400" />
+                )}
+                <span>
+                  {customer.authStatus?.passwordSetupStatus === 'Completed'
+                    ? 'Resend Password Setup Link'
+                    : 'Send Password Setup Link'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                id="btn-force-password-reset"
+                disabled={isAuthLinkLoading}
+                onClick={() => setShowForceResetConfirm(true)}
+                className="px-4 py-2.5 bg-rose-950/40 hover:bg-rose-900/60 active:bg-rose-950 text-rose-300 font-bold text-xs rounded-xl border border-rose-800/60 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                <span>Force Password Reset</span>
+              </button>
+            </div>
+
+            {/* Generated Link Display Box */}
+            {activeGeneratedLink && (
+              <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-2.5 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Secure One-Time Link Generated</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    {hasCopiedAuthLink ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-300 break-all select-all">
+                  {activeGeneratedLink}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Share this secure single-use link with the client. It directs to the WebRunzo Client Portal where they can set their password and sign in immediately.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Card 2: Plan & Subscription Management */}
@@ -1022,6 +1165,57 @@ export const AdminCustomerProfile: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Force Password Reset Confirmation Modal */}
+      {showForceResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20">
+                <RotateCcw className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Force Password Reset</h3>
+                <p className="text-xs text-slate-400">Ownership Transfer & Account Re-keying</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2">
+              <p>
+                You are about to force a password reset for <strong className="text-white">{customer.name}</strong> ({customer.email}).
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-400 text-[11px]">
+                <li>Existing client sessions will be invalidated.</li>
+                <li>Password Setup Status will revert to <strong className="text-amber-400">Pending</strong>.</li>
+                <li>A fresh one-time setup link will be generated for the new owner.</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowForceResetConfirm(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isAuthLinkLoading}
+                onClick={() => handleSendAuthLink('reset')}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isAuthLinkLoading ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-3.5 h-3.5" />
+                )}
+                <span>Confirm & Force Reset</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

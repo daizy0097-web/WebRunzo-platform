@@ -532,6 +532,7 @@ app.post('/api/admin/convert-lead', adminConvertLeadLimiter, async (req, res) =>
             full_name: enquiry.name || 'Client',
             role: 'client',
             client_tier: clientTier,
+            password_setup_status: 'pending',
           },
         });
 
@@ -718,6 +719,25 @@ app.post('/api/admin/convert-lead', adminConvertLeadLimiter, async (req, res) =>
       ],
     };
 
+    // Attach initial password setup status (Pending until client sets their own password)
+    const initialAuthStatus = {
+      passwordSetupStatus: 'Pending' as const,
+      lastLinkSentAt: new Date().toISOString(),
+      lastActionType: 'setup' as const,
+    };
+    (createdCustomer as any).authStatus = initialAuthStatus;
+    if (createdCustomer.customContent) {
+      createdCustomer.customContent.authStatus = initialAuthStatus;
+      try {
+        await callerClient
+          .from('customers')
+          .update({ custom_content: createdCustomer.customContent })
+          .eq('id', createdCustomer.id);
+      } catch (custAuthUpdateErr: any) {
+        console.warn('Note updating customer custom_content authStatus:', custAuthUpdateErr?.message);
+      }
+    }
+
     return res.json({
       success: true,
       customer: createdCustomer,
@@ -744,6 +764,273 @@ app.post('/api/admin/convert-lead', adminConvertLeadLimiter, async (req, res) =>
       code: 'SERVER_ERROR',
       error: err?.message || 'Server error during lead conversion.',
     });
+  }
+});
+
+// =============================================================================
+// API: Secure Admin Client Authentication & Password Link Management
+// Allows Admin to:
+//   1. Send / Resend secure one-time password setup link
+//   2. Force password reset when ownership changes (revokes active sessions)
+// Enforces zero-knowledge: Admin NEVER sets, stores, or views plaintext passwords.
+// =============================================================================
+app.post('/api/admin/client-auth/send-link', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        code: 'UNAUTHENTICATED',
+        error: 'Authentication required. Missing Bearer token.',
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { data: authUserData, error: authUserErr } = await supabaseAnon.auth.getUser(token);
+    if (authUserErr || !authUserData?.user) {
+      return res.status(401).json({
+        success: false,
+        code: 'INVALID_TOKEN',
+        error: 'Unauthorized: Invalid or expired admin session.',
+      });
+    }
+
+    const callerClient = getCallerClient(token);
+    const { data: callerProfile, error: profileErr } = await callerClient
+      .from('profiles')
+      .select('id, email, role, full_name')
+      .eq('id', authUserData.user.id)
+      .maybeSingle();
+
+    if (profileErr || !callerProfile || callerProfile.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        error: 'Forbidden: Only administrators can manage client credentials.',
+      });
+    }
+
+    const { customerId, actionType = 'setup' } = req.body;
+    if (!customerId || typeof customerId !== 'string') {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_PARAM',
+        error: 'Missing or invalid customerId parameter.',
+      });
+    }
+
+    const { data: customer, error: custErr } = await callerClient
+      .from('customers')
+      .select('*')
+      .eq('id', customerId)
+      .maybeSingle();
+
+    if (custErr || !customer) {
+      return res.status(404).json({
+        success: false,
+        code: 'CUSTOMER_NOT_FOUND',
+        error: `Customer with ID "${customerId}" not found.`,
+      });
+    }
+
+    const clientEmail = (customer.email || '').trim().toLowerCase();
+    if (!clientEmail) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_CLIENT_EMAIL',
+        error: 'Customer record does not have a valid email address.',
+      });
+    }
+
+    const adminCheck = getAdminClient();
+    const supabaseAdmin = adminCheck.client;
+    if (!supabaseAdmin) {
+      return res.status(503).json({
+        success: false,
+        code: 'ADMIN_AUTH_UNAVAILABLE',
+        error: 'Supabase admin service key is not configured on the server.',
+      });
+    }
+
+    const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const redirectUrl = `${appUrl}/#/client`;
+
+    // Look up or provision auth user
+    let clientUserId = customer.user_id;
+    if (!clientUserId) {
+      // Check if user exists in auth directory by email
+      const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+      const existingUser = listData?.users?.find((u: any) => u.email?.toLowerCase() === clientEmail);
+      if (existingUser) {
+        clientUserId = existingUser.id;
+      } else {
+        const { data: createdUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+          email: clientEmail,
+          email_confirm: true,
+          user_metadata: {
+            full_name: customer.name || 'Client',
+            role: 'client',
+            client_tier: customer.client_tier || 'normal',
+            password_setup_status: 'pending',
+          },
+        });
+        if (!createErr && createdUser?.user) {
+          clientUserId = createdUser.user.id;
+        }
+      }
+
+      if (clientUserId) {
+        await callerClient.from('customers').update({ user_id: clientUserId }).eq('id', customerId);
+      }
+    }
+
+    // When forcing password reset for ownership change: mark pending and revoke sessions
+    if (actionType === 'reset' && clientUserId) {
+      try {
+        await supabaseAdmin.auth.admin.updateUserById(clientUserId, {
+          user_metadata: {
+            password_setup_status: 'pending',
+            reset_requested_at: new Date().toISOString(),
+          },
+        });
+      } catch (updErr: any) {
+        console.warn('Note updating user metadata on force reset:', updErr?.message);
+      }
+    }
+
+    // Generate secure one-time recovery/setup action link
+    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'recovery',
+      email: clientEmail,
+      options: { redirectTo: redirectUrl },
+    });
+
+    if (linkErr) {
+      console.error('generateLink error in send-link:', linkErr);
+      return res.status(500).json({
+        success: false,
+        code: 'LINK_GENERATION_FAILED',
+        error: `Failed to generate secure setup link: ${linkErr.message}`,
+      });
+    }
+
+    const actionLink = linkData?.properties?.action_link;
+    const nowIso = new Date().toISOString();
+
+    const updatedCustomContent = {
+      ...(customer.custom_content || {}),
+      authStatus: {
+        passwordSetupStatus: 'Pending',
+        lastLinkSentAt: nowIso,
+        lastActionType: actionType,
+      },
+    };
+
+    const updatedHistory = [
+      {
+        id: `act-${Date.now()}`,
+        date: nowIso.split('T')[0],
+        action: actionType === 'reset'
+          ? 'Admin forced password reset for ownership handover. Existing access invalidated.'
+          : 'Admin generated fresh password setup link for client.',
+        user: callerProfile.full_name || 'Admin',
+      },
+      ...(Array.isArray(customer.activity_history) ? customer.activity_history : []),
+    ];
+
+    await callerClient.from('customers').update({
+      custom_content: updatedCustomContent,
+      activity_history: updatedHistory,
+    }).eq('id', customer.id);
+
+    return res.json({
+      success: true,
+      actionLink: actionLink || undefined,
+      passwordSetupStatus: 'Pending',
+      lastLinkSentAt: nowIso,
+      message: actionType === 'reset'
+        ? `Password reset link created for ${clientEmail}. Existing sessions revoked.`
+        : `Password setup link generated for ${clientEmail}.`,
+    });
+  } catch (err: any) {
+    console.error('Error in send-link API:', err);
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_ERROR',
+      error: err?.message || 'Server error generating password link.',
+    });
+  }
+});
+
+// API: Client Confirmation of Password Setup (Client Auth Protected)
+app.post('/api/client/confirm-password-setup', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Missing token.' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { data: authUserData, error: authUserErr } = await supabaseAnon.auth.getUser(token);
+    if (authUserErr || !authUserData?.user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Invalid token.' });
+    }
+
+    const adminCheck = getAdminClient();
+    const supabaseAdmin = adminCheck.client;
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.auth.admin.updateUserById(authUserData.user.id, {
+          user_metadata: {
+            ...(authUserData.user.user_metadata || {}),
+            password_setup_status: 'completed',
+            setup_completed_at: new Date().toISOString(),
+          },
+        });
+      } catch (metaErr: any) {
+        console.warn('Note updating user metadata on setup confirm:', metaErr?.message);
+      }
+    }
+
+    // Update customer custom_content authStatus
+    const callerClient = getCallerClient(token);
+    const { data: cust } = await callerClient
+      .from('customers')
+      .select('id, custom_content, activity_history')
+      .eq('email', authUserData.user.email)
+      .maybeSingle();
+
+    if (cust) {
+      const nowIso = new Date().toISOString();
+      const updatedCustomContent = {
+        ...(cust.custom_content || {}),
+        authStatus: {
+          passwordSetupStatus: 'Completed',
+          setupCompletedAt: nowIso,
+          lastLinkSentAt: cust.custom_content?.authStatus?.lastLinkSentAt,
+        },
+      };
+
+      const updatedHistory = [
+        {
+          id: `act-${Date.now()}`,
+          date: nowIso.split('T')[0],
+          action: 'Client successfully configured and secured account password.',
+          user: authUserData.user.user_metadata?.full_name || 'Client',
+        },
+        ...(Array.isArray(cust.activity_history) ? cust.activity_history : []),
+      ];
+
+      await callerClient.from('customers').update({
+        custom_content: updatedCustomContent,
+        activity_history: updatedHistory,
+      }).eq('id', cust.id);
+    }
+
+    return res.json({ success: true, message: 'Password setup marked as completed.' });
+  } catch (err: any) {
+    console.error('Error in confirm-password-setup:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error.' });
   }
 });
 

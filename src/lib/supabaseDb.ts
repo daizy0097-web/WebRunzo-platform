@@ -188,6 +188,9 @@ export function mapCustomerFromDb(
     footerScripts: row.footer_scripts || undefined,
     subscriptionState: row.subscription_state || 'ACTIVE',
     gracePeriodEndDate: row.grace_period_end_date || undefined,
+    authStatus: row.custom_content?.authStatus || {
+      passwordSetupStatus: (row.notes && row.notes.includes('Converted from Website Enquiry')) ? 'Pending' : 'Completed',
+    },
     customContent: row.custom_content || {
       businessName: row.business_name,
       tagline: 'Precision digital engineering',
