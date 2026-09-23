@@ -35,7 +35,6 @@ import {
   ClipboardList,
   Palette,
   Check,
-  Copy,
   RotateCcw,
   Send,
   KeyRound,
@@ -120,30 +119,37 @@ export const AdminCustomerProfile: React.FC = () => {
 
   // Client Authentication & Password Link States
   const [isAuthLinkLoading, setIsAuthLinkLoading] = useState(false);
-  const [activeGeneratedLink, setActiveGeneratedLink] = useState<string | null>(null);
-  const [hasCopiedAuthLink, setHasCopiedAuthLink] = useState(false);
+  const [emailSentSuccess, setEmailSentSuccess] = useState<{ maskedEmail?: string; actionType: 'setup' | 'reset' } | null>(null);
   const [showForceResetConfirm, setShowForceResetConfirm] = useState(false);
+
+  const clientMaskedEmail = (() => {
+    if (emailSentSuccess?.maskedEmail) return emailSentSuccess.maskedEmail;
+    const email = (customer.email || '').trim();
+    if (!email) return 'client email';
+    const [local, domain] = email.split('@');
+    if (!domain) return email;
+    const maskedLocal =
+      local.length <= 2
+        ? local[0] + '*'
+        : local[0] + '*'.repeat(Math.min(local.length - 2, 4)) + local.slice(-1);
+    return `${maskedLocal}@${domain}`;
+  })();
 
   const handleSendAuthLink = async (actionType: 'setup' | 'reset') => {
     setIsAuthLinkLoading(true);
-    setActiveGeneratedLink(null);
+    setEmailSentSuccess(null);
     try {
       const res = await sendClientPasswordSetupLink(customer.id, actionType);
-      if (res.success && res.actionLink) {
-        setActiveGeneratedLink(res.actionLink);
+      if (res.success) {
+        setEmailSentSuccess({
+          maskedEmail: res.maskedEmail,
+          actionType,
+        });
       }
     } finally {
       setIsAuthLinkLoading(false);
       setShowForceResetConfirm(false);
     }
-  };
-
-  const handleCopyLink = () => {
-    if (!activeGeneratedLink) return;
-    navigator.clipboard.writeText(activeGeneratedLink);
-    setHasCopiedAuthLink(true);
-    addToast('success', 'Link Copied', 'Password setup link copied to clipboard.');
-    setTimeout(() => setHasCopiedAuthLink(false), 3000);
   };
 
   const handleToggleWebsiteControl = () => {
@@ -413,37 +419,23 @@ export const AdminCustomerProfile: React.FC = () => {
               </button>
             </div>
 
-            {/* Generated Link Display Box */}
-            {activeGeneratedLink && (
-              <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-2.5 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Secure One-Time Link Generated</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                  >
-                    {hasCopiedAuthLink ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copy Link</span>
-                      </>
-                    )}
-                  </button>
+            {/* Email Sent Success Confirmation Box */}
+            {emailSentSuccess && (
+              <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-2 animate-in fade-in duration-200">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    {emailSentSuccess.actionType === 'reset'
+                      ? 'Password Reset Link Sent'
+                      : 'Password Setup Link Sent'}
+                  </span>
                 </div>
-                <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-300 break-all select-all">
-                  {activeGeneratedLink}
-                </div>
-                <p className="text-[10px] text-slate-400">
-                  Share this secure single-use link with the client. It directs to the WebRunzo Client Portal where they can set their password and sign in immediately.
+                <p className="text-xs text-slate-300">
+                  A secure password {emailSentSuccess.actionType === 'reset' ? 'reset' : 'setup'} email has been sent to{' '}
+                  <span className="font-mono text-emerald-300 font-semibold">{clientMaskedEmail}</span>.
+                </p>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  The client can click the one-time link in their email to access the WebRunzo Client Portal and configure their password.
                 </p>
               </div>
             )}

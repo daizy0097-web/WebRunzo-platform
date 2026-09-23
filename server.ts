@@ -1020,69 +1020,52 @@ app.post('/api/admin/client-auth/send-link', async (req, res) => {
       }
     }
 
-    // Generate secure one-time recovery/setup action link
-    // Attempt 1: With explicit redirect URL
-    let linkData: any = null;
-    let linkErr: any = null;
+    // Compute privacy-safe masked email, e.g. "c****t@company.com"
+    const [localPart, domainPart] = clientEmail.split('@');
+    const maskedLocal =
+      !localPart || localPart.length <= 2
+        ? (localPart ? localPart[0] + '*' : '***')
+        : localPart[0] + '*'.repeat(Math.min(localPart.length - 2, 4)) + localPart.slice(-1);
+    const maskedEmail = domainPart ? `${maskedLocal}@${domainPart}` : 'client email';
 
+    // Dispatch secure one-time password setup/recovery email via Supabase GoTrue Auth
+    let emailDispatchErr: any = null;
     try {
-      const res1 = await supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email: clientEmail,
-        options: { redirectTo: redirectUrl },
+      const { error: resetErr } = await supabaseAdmin.auth.resetPasswordForEmail(clientEmail, {
+        redirectTo: redirectUrl,
       });
-      linkData = res1.data;
-      linkErr = res1.error;
-    } catch (genErr1: any) {
-      linkErr = genErr1;
-    }
-
-    // Attempt 2: If redirectTo was rejected by Supabase (e.g. Redirect URL not yet configured in Supabase settings),
-    // retry without redirectTo so Supabase generates link with its default configured Site URL
-    if (linkErr) {
-      console.warn('generateLink with redirectTo failed, attempting fallback without redirectTo:', linkErr.message);
-      try {
-        const res2 = await supabaseAdmin.auth.admin.generateLink({
-          type: 'recovery',
-          email: clientEmail,
-        });
-        if (!res2.error && res2.data) {
-          linkData = res2.data;
-          linkErr = null;
-        }
-      } catch (genErr2: any) {
-        console.warn('generateLink fallback error:', genErr2?.message);
+      if (resetErr) {
+        emailDispatchErr = resetErr;
       }
+    } catch (err: any) {
+      emailDispatchErr = err;
     }
 
-    // Attempt 3: If still failing and action is 'setup', attempt 'invite' link
-    if (linkErr && actionType === 'setup') {
-      console.warn('Recovery link failed for setup action, attempting invite link:', linkErr.message);
-      try {
-        const res3 = await supabaseAdmin.auth.admin.generateLink({
-          type: 'invite',
-          email: clientEmail,
-          options: { redirectTo: redirectUrl },
+    if (emailDispatchErr) {
+      console.error('Supabase resetPasswordForEmail error:', emailDispatchErr);
+      const rawMsg = (emailDispatchErr.message || '').toLowerCase();
+      const isRateLimit =
+        rawMsg.includes('rate limit') ||
+        rawMsg.includes('security purposes') ||
+        rawMsg.includes('too many requests') ||
+        emailDispatchErr.status === 429 ||
+        emailDispatchErr.code === 'over_email_send_rate_limit';
+
+      if (isRateLimit) {
+        return res.status(429).json({
+          success: false,
+          code: 'EMAIL_RATE_LIMIT',
+          error: `Email delivery throttled by auth provider for ${maskedEmail}. Please wait 60 seconds before sending another setup email.`,
         });
-        if (!res3.error && res3.data) {
-          linkData = res3.data;
-          linkErr = null;
-        }
-      } catch (genErr3: any) {
-        console.warn('generateLink invite fallback error:', genErr3?.message);
       }
-    }
 
-    if (linkErr) {
-      console.error('generateLink error in send-link:', linkErr);
       return res.status(500).json({
         success: false,
-        code: linkErr.code || 'LINK_GENERATION_FAILED',
-        error: `Failed to generate secure setup link: ${linkErr.message || 'Supabase Auth rejected link generation.'}`,
+        code: emailDispatchErr.code || 'EMAIL_DELIVERY_FAILED',
+        error: `Failed to deliver setup email to ${maskedEmail}: ${emailDispatchErr.message || 'Supabase Auth rejected delivery.'}`,
       });
     }
 
-    const actionLink = linkData?.properties?.action_link;
     const nowIso = new Date().toISOString();
 
     const updatedCustomContent = {
@@ -1099,8 +1082,8 @@ app.post('/api/admin/client-auth/send-link', async (req, res) => {
         id: `act-${Date.now()}`,
         date: nowIso.split('T')[0],
         action: actionType === 'reset'
-          ? 'Admin forced password reset for ownership handover. Existing access invalidated.'
-          : 'Admin generated fresh password setup link for client.',
+          ? `Admin forced password reset. Setup email dispatched to ${maskedEmail}.`
+          : `Admin dispatched password setup email to ${maskedEmail}.`,
         user: callerProfile.full_name || 'Admin',
       },
       ...(Array.isArray(customer.activity_history) ? customer.activity_history : []),
@@ -1115,12 +1098,13 @@ app.post('/api/admin/client-auth/send-link', async (req, res) => {
 
     return res.json({
       success: true,
-      actionLink: actionLink || undefined,
+      emailSent: true,
+      maskedEmail,
       passwordSetupStatus: 'Pending',
       lastLinkSentAt: nowIso,
       message: actionType === 'reset'
-        ? `Password reset link created for ${clientEmail}. Existing sessions revoked.`
-        : `Password setup link generated for ${clientEmail}.`,
+        ? `Password reset link sent to ${maskedEmail}. Existing sessions revoked.`
+        : `Password setup link sent to ${maskedEmail}.`,
     });
   } catch (err: any) {
     console.error('Error in send-link API:', err);

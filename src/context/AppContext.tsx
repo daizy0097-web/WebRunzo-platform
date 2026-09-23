@@ -298,7 +298,7 @@ interface AppContextType {
   sendClientPasswordSetupLink: (
     customerId: string,
     actionType?: 'setup' | 'reset'
-  ) => Promise<{ success: boolean; actionLink?: string; message?: string; error?: string }>;
+  ) => Promise<{ success: boolean; emailSent?: boolean; maskedEmail?: string; message?: string; error?: string }>;
 
   updateSettings: (updates: Partial<AdminSettings>) => void;
   resetAllData: () => void;
@@ -2723,7 +2723,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const sendClientPasswordSetupLink = async (
     customerId: string,
     actionType: 'setup' | 'reset' = 'setup'
-  ): Promise<{ success: boolean; actionLink?: string; message?: string; error?: string }> => {
+  ): Promise<{ success: boolean; emailSent?: boolean; maskedEmail?: string; message?: string; error?: string }> => {
     if (session.role !== 'admin') {
       addToast('error', 'Unauthorized', 'Only administrators can manage client credentials.');
       return { success: false, error: 'Unauthorized' };
@@ -2774,17 +2774,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : c
           )
         );
+        const successTitle = actionType === 'reset' ? 'Password Reset Sent' : 'Password Setup Link Sent';
+        const successMsg = result.message || (result.maskedEmail ? `Password setup link sent to ${result.maskedEmail}` : 'Password setup link sent to client email.');
         addToast(
           'success',
-          actionType === 'reset' ? 'Password Reset Triggered' : 'Setup Link Ready',
-          result.message || 'Client authentication link generated.'
+          successTitle,
+          successMsg
         );
-        return { success: true, actionLink: result.actionLink, message: result.message };
+        return { success: true, emailSent: true, maskedEmail: result.maskedEmail, message: successMsg };
       } else {
         const errMsg =
           result.error ||
           result.message ||
-          (response.status ? `Authentication error (HTTP ${response.status}): ${response.statusText || 'Failed to generate link'}` : 'Failed to generate setup link.');
+          (response.status ? `Authentication error (HTTP ${response.status}): ${response.statusText || 'Failed to dispatch email'}` : 'Failed to send setup link.');
         addToast('error', 'Authentication Control Failed', errMsg);
         return { success: false, error: errMsg };
       }
