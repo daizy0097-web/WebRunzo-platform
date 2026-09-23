@@ -10,7 +10,7 @@ app.set("trust proxy", 1);
 var getSupabaseConfig = () => {
   const url = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
   const anonKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "").trim();
-  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SECRET_KEY || "").trim();
   return { url, anonKey, serviceRoleKey };
 };
 var _supabaseAnon = null;
@@ -59,7 +59,7 @@ var getCallerClient = (token) => {
 var getAdminClient = () => {
   const { url, serviceRoleKey } = getSupabaseConfig();
   const rawKey = serviceRoleKey;
-  const trimmedKey = rawKey.trim();
+  const trimmedKey = rawKey.replace(/^["']|["']$/g, "").trim();
   if (!trimmedKey) {
     return {
       client: null,
@@ -71,14 +71,14 @@ var getAdminClient = () => {
     return {
       client: null,
       code: "CONFIG_BLOCKER",
-      error: "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is currently configured with a Supabase Personal Access Token (sbp_...) instead of the project service_role secret key. Please obtain the service_role JWT (starts with eyJ...) from Supabase Dashboard > Project Settings > API and update SUPABASE_SERVICE_ROLE_KEY in your deployment environment settings."
+      error: "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is currently configured with a Supabase Personal Access Token (sbp_...) instead of the project service_role/secret key. Please obtain the service_role key from Supabase Dashboard > Project Settings > API and update SUPABASE_SERVICE_ROLE_KEY in your deployment environment settings."
     };
   }
-  if (!trimmedKey.startsWith("eyJ")) {
+  if (!trimmedKey.startsWith("eyJ") && !trimmedKey.startsWith("sb_secret_")) {
     return {
       client: null,
       code: "CONFIG_BLOCKER",
-      error: "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase service_role JWT. Please obtain the service_role JWT (starts with eyJ...) from Supabase Dashboard > Project Settings > API and update SUPABASE_SERVICE_ROLE_KEY in your deployment environment settings."
+      error: "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase service_role or secret key (must start with eyJ... or sb_secret_...). Please obtain the service_role key from Supabase Dashboard > Project Settings > API and update SUPABASE_SERVICE_ROLE_KEY in your deployment environment settings."
     };
   }
   if (!url) {
@@ -663,35 +663,71 @@ app.post("/api/admin/client-auth/send-link", async (req, res) => {
     if (!supabaseAdmin) {
       return res.status(503).json({
         success: false,
-        code: "ADMIN_AUTH_UNAVAILABLE",
-        error: "Supabase admin service key is not configured on the server."
+        code: adminCheck.code || "ADMIN_AUTH_UNAVAILABLE",
+        error: adminCheck.error || "Supabase admin service key is not configured on the server."
       });
     }
-    const appUrl = (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
-    const redirectUrl = `${appUrl}/#/client`;
+    const originHeader = req.headers.origin || "";
+    const forwardedHost = req.headers["x-forwarded-host"] || req.headers.host || "";
+    const forwardedProto = req.headers["x-forwarded-proto"] || "https";
+    const derivedHostUrl = forwardedHost ? `${forwardedProto}://${forwardedHost}` : "";
+    const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "";
+    const appUrl = (process.env.APP_URL || originHeader || derivedHostUrl || vercelUrl || "http://localhost:3000").replace(/\/+$/, "");
+    const redirectUrl = `${appUrl}/`;
     let clientUserId = customer.user_id;
-    if (!clientUserId) {
-      const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
-      const existingUser = listData?.users?.find((u) => u.email?.toLowerCase() === clientEmail);
-      if (existingUser) {
-        clientUserId = existingUser.id;
-      } else {
-        const { data: createdUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-          email: clientEmail,
-          email_confirm: true,
-          user_metadata: {
-            full_name: customer.name || "Client",
-            role: "client",
-            client_tier: customer.client_tier || "normal",
-            password_setup_status: "pending"
-          }
-        });
-        if (!createErr && createdUser?.user) {
-          clientUserId = createdUser.user.id;
+    let authUserExists = false;
+    if (clientUserId) {
+      try {
+        const { data: userData, error: userFetchErr } = await supabaseAdmin.auth.admin.getUserById(clientUserId);
+        if (!userFetchErr && userData?.user) {
+          authUserExists = true;
         }
+      } catch (checkErr) {
+        console.warn("getUserById check warning:", checkErr?.message);
       }
-      if (clientUserId) {
-        await callerClient.from("customers").update({ user_id: clientUserId }).eq("id", customerId);
+    }
+    if (!authUserExists) {
+      try {
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 100 });
+        const existingUser = (listData?.users || []).find((u) => u.email?.toLowerCase() === clientEmail);
+        if (existingUser) {
+          clientUserId = existingUser.id;
+          authUserExists = true;
+        }
+      } catch (listErr) {
+        console.warn("listUsers directory check warning:", listErr?.message);
+      }
+    }
+    if (!authUserExists) {
+      const { data: createdUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: clientEmail,
+        email_confirm: true,
+        user_metadata: {
+          full_name: customer.name || "Client",
+          role: "client",
+          client_tier: customer.client_tier || "normal",
+          password_setup_status: "pending"
+        }
+      });
+      if (createErr) {
+        console.warn("createUser notice:", createErr.message);
+        const isAlreadyRegistered = createErr.code === "email_exists" || (createErr.message || "").toLowerCase().includes("already") || (createErr.message || "").toLowerCase().includes("registered");
+        if (!isAlreadyRegistered) {
+          return res.status(400).json({
+            success: false,
+            code: "AUTH_PROVISIONING_FAILED",
+            error: `Failed to provision client Auth account: ${createErr.message}`
+          });
+        }
+      } else if (createdUser?.user) {
+        clientUserId = createdUser.user.id;
+      }
+    }
+    if (clientUserId && clientUserId !== customer.user_id) {
+      try {
+        await supabaseAdmin.from("customers").update({ user_id: clientUserId }).eq("id", customerId);
+      } catch (syncErr) {
+        console.warn("Note syncing customer user_id:", syncErr?.message);
       }
     }
     if (actionType === "reset" && clientUserId) {
@@ -706,17 +742,56 @@ app.post("/api/admin/client-auth/send-link", async (req, res) => {
         console.warn("Note updating user metadata on force reset:", updErr?.message);
       }
     }
-    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
-      type: "recovery",
-      email: clientEmail,
-      options: { redirectTo: redirectUrl }
-    });
+    let linkData = null;
+    let linkErr = null;
+    try {
+      const res1 = await supabaseAdmin.auth.admin.generateLink({
+        type: "recovery",
+        email: clientEmail,
+        options: { redirectTo: redirectUrl }
+      });
+      linkData = res1.data;
+      linkErr = res1.error;
+    } catch (genErr1) {
+      linkErr = genErr1;
+    }
+    if (linkErr) {
+      console.warn("generateLink with redirectTo failed, attempting fallback without redirectTo:", linkErr.message);
+      try {
+        const res2 = await supabaseAdmin.auth.admin.generateLink({
+          type: "recovery",
+          email: clientEmail
+        });
+        if (!res2.error && res2.data) {
+          linkData = res2.data;
+          linkErr = null;
+        }
+      } catch (genErr2) {
+        console.warn("generateLink fallback error:", genErr2?.message);
+      }
+    }
+    if (linkErr && actionType === "setup") {
+      console.warn("Recovery link failed for setup action, attempting invite link:", linkErr.message);
+      try {
+        const res3 = await supabaseAdmin.auth.admin.generateLink({
+          type: "invite",
+          email: clientEmail,
+          options: { redirectTo: redirectUrl }
+        });
+        if (!res3.error && res3.data) {
+          linkData = res3.data;
+          linkErr = null;
+        }
+      } catch (genErr3) {
+        console.warn("generateLink invite fallback error:", genErr3?.message);
+      }
+    }
     if (linkErr) {
       console.error("generateLink error in send-link:", linkErr);
       return res.status(500).json({
         success: false,
-        code: "LINK_GENERATION_FAILED",
-        error: `Failed to generate secure setup link: ${linkErr.message}`
+        code: linkErr.code || "LINK_GENERATION_FAILED",
+        error: `Failed to generate secure setup link: ${linkErr.message || "Supabase Auth rejected link generation."}`
       });
     }
     const actionLink = linkData?.properties?.action_link;
@@ -738,7 +813,8 @@ app.post("/api/admin/client-auth/send-link", async (req, res) => {
       },
       ...Array.isArray(customer.activity_history) ? customer.activity_history : []
     ];
-    await callerClient.from("customers").update({
+    const dbClient = supabaseAdmin || callerClient;
+    await dbClient.from("customers").update({
       custom_content: updatedCustomContent,
       activity_history: updatedHistory
     }).eq("id", customer.id);
