@@ -14,7 +14,12 @@ app.set('trust proxy', 1);
 const getSupabaseConfig = () => {
   const url = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
   const anonKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
-  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const serviceRoleKey = (
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.SUPABASE_SECRET_KEY ||
+    ''
+  ).trim();
   return { url, anonKey, serviceRoleKey };
 };
 
@@ -78,7 +83,7 @@ interface AdminClientValidation {
 const getAdminClient = (): AdminClientValidation => {
   const { url, serviceRoleKey } = getSupabaseConfig();
   const rawKey = serviceRoleKey;
-  const trimmedKey = rawKey.trim();
+  const trimmedKey = rawKey.replace(/^["']|["']$/g, '').trim();
 
   if (!trimmedKey) {
     return {
@@ -95,17 +100,17 @@ const getAdminClient = (): AdminClientValidation => {
       client: null,
       code: 'CONFIG_BLOCKER',
       error:
-        'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is currently configured with a Supabase Personal Access Token (sbp_...) instead of the project service_role secret key. Please obtain the service_role JWT (starts with eyJ...) from Supabase Dashboard > Project Settings > API and update SUPABASE_SERVICE_ROLE_KEY in your deployment environment settings.',
+        'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is currently configured with a Supabase Personal Access Token (sbp_...) instead of the project service_role/secret key. Please obtain the service_role key from Supabase Dashboard > Project Settings > API and update SUPABASE_SERVICE_ROLE_KEY in your deployment environment settings.',
     };
   }
 
-  // Supabase service_role keys are always JWTs starting with 'eyJ'
-  if (!trimmedKey.startsWith('eyJ')) {
+  // Supabase service keys are either legacy JWTs (starting with 'eyJ') or modern secret keys (starting with 'sb_secret_')
+  if (!trimmedKey.startsWith('eyJ') && !trimmedKey.startsWith('sb_secret_')) {
     return {
       client: null,
       code: 'CONFIG_BLOCKER',
       error:
-        'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase service_role JWT. Please obtain the service_role JWT (starts with eyJ...) from Supabase Dashboard > Project Settings > API and update SUPABASE_SERVICE_ROLE_KEY in your deployment environment settings.',
+        'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase service_role or secret key (must start with eyJ... or sb_secret_...). Please obtain the service_role key from Supabase Dashboard > Project Settings > API and update SUPABASE_SERVICE_ROLE_KEY in your deployment environment settings.',
     };
   }
 
@@ -890,40 +895,97 @@ app.post('/api/admin/client-auth/send-link', async (req, res) => {
     if (!supabaseAdmin) {
       return res.status(503).json({
         success: false,
-        code: 'ADMIN_AUTH_UNAVAILABLE',
-        error: 'Supabase admin service key is not configured on the server.',
+        code: adminCheck.code || 'ADMIN_AUTH_UNAVAILABLE',
+        error: adminCheck.error || 'Supabase admin service key is not configured on the server.',
       });
     }
 
-    const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
-    const redirectUrl = `${appUrl}/#/client`;
+    const originHeader = (req.headers.origin as string) || '';
+    const forwardedHost = (req.headers['x-forwarded-host'] as string) || (req.headers.host as string) || '';
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string) || 'https';
+    const derivedHostUrl = forwardedHost ? `${forwardedProto}://${forwardedHost}` : '';
+    const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
+
+    const appUrl = (
+      process.env.APP_URL ||
+      originHeader ||
+      derivedHostUrl ||
+      vercelUrl ||
+      'http://localhost:3000'
+    ).replace(/\/+$/, '');
+
+    // Note: Supabase GoTrue Auth rejects redirect URLs containing fragment/hash (#).
+    // Using clean base URL (${appUrl}/) so Supabase successfully appends #access_token=...&type=recovery.
+    const redirectUrl = `${appUrl}/`;
 
     // Look up or provision auth user
     let clientUserId = customer.user_id;
-    if (!clientUserId) {
-      // Check if user exists in auth directory by email
-      const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
-      const existingUser = listData?.users?.find((u: any) => u.email?.toLowerCase() === clientEmail);
-      if (existingUser) {
-        clientUserId = existingUser.id;
-      } else {
-        const { data: createdUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-          email: clientEmail,
-          email_confirm: true,
-          user_metadata: {
-            full_name: customer.name || 'Client',
-            role: 'client',
-            client_tier: customer.client_tier || 'normal',
-            password_setup_status: 'pending',
-          },
-        });
-        if (!createErr && createdUser?.user) {
-          clientUserId = createdUser.user.id;
-        }
-      }
+    let authUserExists = false;
 
-      if (clientUserId) {
-        await callerClient.from('customers').update({ user_id: clientUserId }).eq('id', customerId);
+    // 1. Check if user already exists in auth by stored ID
+    if (clientUserId) {
+      try {
+        const { data: userData, error: userFetchErr } = await supabaseAdmin.auth.admin.getUserById(clientUserId);
+        if (!userFetchErr && userData?.user) {
+          authUserExists = true;
+        }
+      } catch (checkErr: any) {
+        console.warn('getUserById check warning:', checkErr?.message);
+      }
+    }
+
+    // 2. If not confirmed by ID, check if user exists in auth directory by email
+    if (!authUserExists) {
+      try {
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 100 });
+        const existingUser = (listData?.users || []).find((u: any) => u.email?.toLowerCase() === clientEmail);
+        if (existingUser) {
+          clientUserId = existingUser.id;
+          authUserExists = true;
+        }
+      } catch (listErr: any) {
+        console.warn('listUsers directory check warning:', listErr?.message);
+      }
+    }
+
+    // 3. If user does not exist in auth directory, create auth user account
+    if (!authUserExists) {
+      const { data: createdUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: clientEmail,
+        email_confirm: true,
+        user_metadata: {
+          full_name: customer.name || 'Client',
+          role: 'client',
+          client_tier: customer.client_tier || 'normal',
+          password_setup_status: 'pending',
+        },
+      });
+
+      if (createErr) {
+        console.warn('createUser notice:', createErr.message);
+        const isAlreadyRegistered =
+          createErr.code === 'email_exists' ||
+          (createErr.message || '').toLowerCase().includes('already') ||
+          (createErr.message || '').toLowerCase().includes('registered');
+
+        if (!isAlreadyRegistered) {
+          return res.status(400).json({
+            success: false,
+            code: 'AUTH_PROVISIONING_FAILED',
+            error: `Failed to provision client Auth account: ${createErr.message}`,
+          });
+        }
+      } else if (createdUser?.user) {
+        clientUserId = createdUser.user.id;
+      }
+    }
+
+    // Keep customer record synced with resolved auth user ID using admin privileges
+    if (clientUserId && clientUserId !== customer.user_id) {
+      try {
+        await supabaseAdmin.from('customers').update({ user_id: clientUserId }).eq('id', customerId);
+      } catch (syncErr: any) {
+        console.warn('Note syncing customer user_id:', syncErr?.message);
       }
     }
 
@@ -942,18 +1004,64 @@ app.post('/api/admin/client-auth/send-link', async (req, res) => {
     }
 
     // Generate secure one-time recovery/setup action link
-    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: clientEmail,
-      options: { redirectTo: redirectUrl },
-    });
+    // Attempt 1: With explicit redirect URL
+    let linkData: any = null;
+    let linkErr: any = null;
+
+    try {
+      const res1 = await supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email: clientEmail,
+        options: { redirectTo: redirectUrl },
+      });
+      linkData = res1.data;
+      linkErr = res1.error;
+    } catch (genErr1: any) {
+      linkErr = genErr1;
+    }
+
+    // Attempt 2: If redirectTo was rejected by Supabase (e.g. Redirect URL not yet configured in Supabase settings),
+    // retry without redirectTo so Supabase generates link with its default configured Site URL
+    if (linkErr) {
+      console.warn('generateLink with redirectTo failed, attempting fallback without redirectTo:', linkErr.message);
+      try {
+        const res2 = await supabaseAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: clientEmail,
+        });
+        if (!res2.error && res2.data) {
+          linkData = res2.data;
+          linkErr = null;
+        }
+      } catch (genErr2: any) {
+        console.warn('generateLink fallback error:', genErr2?.message);
+      }
+    }
+
+    // Attempt 3: If still failing and action is 'setup', attempt 'invite' link
+    if (linkErr && actionType === 'setup') {
+      console.warn('Recovery link failed for setup action, attempting invite link:', linkErr.message);
+      try {
+        const res3 = await supabaseAdmin.auth.admin.generateLink({
+          type: 'invite',
+          email: clientEmail,
+          options: { redirectTo: redirectUrl },
+        });
+        if (!res3.error && res3.data) {
+          linkData = res3.data;
+          linkErr = null;
+        }
+      } catch (genErr3: any) {
+        console.warn('generateLink invite fallback error:', genErr3?.message);
+      }
+    }
 
     if (linkErr) {
       console.error('generateLink error in send-link:', linkErr);
       return res.status(500).json({
         success: false,
-        code: 'LINK_GENERATION_FAILED',
-        error: `Failed to generate secure setup link: ${linkErr.message}`,
+        code: linkErr.code || 'LINK_GENERATION_FAILED',
+        error: `Failed to generate secure setup link: ${linkErr.message || 'Supabase Auth rejected link generation.'}`,
       });
     }
 
@@ -981,7 +1089,9 @@ app.post('/api/admin/client-auth/send-link', async (req, res) => {
       ...(Array.isArray(customer.activity_history) ? customer.activity_history : []),
     ];
 
-    await callerClient.from('customers').update({
+    // Persist customer record update using admin client to ensure database triggers and RLS pass
+    const dbClient = supabaseAdmin || callerClient;
+    await dbClient.from('customers').update({
       custom_content: updatedCustomContent,
       activity_history: updatedHistory,
     }).eq('id', customer.id);

@@ -2743,7 +2743,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
         body: JSON.stringify({ customerId, actionType }),
       });
-      const result = await response.json().catch(() => ({}));
+      let result: any = {};
+      try {
+        result = await response.json();
+      } catch (_jsonErr) {
+        const rawText = await response.text().catch(() => '');
+        result = { error: rawText || `Server returned HTTP ${response.status}: ${response.statusText || 'Unable to process'}` };
+      }
+
       if (response.ok && result.success) {
         setCustomers((prev) =>
           prev.map((c) =>
@@ -2774,7 +2781,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
         return { success: true, actionLink: result.actionLink, message: result.message };
       } else {
-        const errMsg = result.error || 'Failed to generate setup link.';
+        const errMsg =
+          result.error ||
+          result.message ||
+          (response.status ? `Authentication error (HTTP ${response.status}): ${response.statusText || 'Failed to generate link'}` : 'Failed to generate setup link.');
         addToast('error', 'Authentication Control Failed', errMsg);
         return { success: false, error: errMsg };
       }
