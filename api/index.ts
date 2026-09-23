@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import app from '../server.ts';
+import app from '../server.js';
 
 // Disable automatic Vercel body parsing so Express handles raw request streaming
 // (required for Razorpay webhook cryptographic HMAC signature verification via req.rawBody)
@@ -16,7 +16,8 @@ export default function handler(req: IncomingMessage, res: ServerResponse) {
       req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
     }
 
-    return (app as any)(req, res);
+    const expressApp = (app && (app as any).default) || app;
+    return (expressApp as any)(req, res);
   } catch (err: any) {
     console.error('[Vercel Handler Exception]:', err);
     if (!res.headersSent) {
