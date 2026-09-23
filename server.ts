@@ -187,6 +187,23 @@ app.use(
   })
 );
 
+// CORS and preflight handling for all API endpoints
+app.use('/api', (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // =============================================================================
 // RATE LIMITING ARCHITECTURE (WR-01)
 // =============================================================================
@@ -2969,7 +2986,7 @@ async function startServer() {
 }
 
 // Prevent app.listen() from running on Vercel serverless functions, keeping local dev and Docker working
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && !process.env.VERCEL_ENV && !process.env.NOW_REGION) {
   startServer();
 }
 
