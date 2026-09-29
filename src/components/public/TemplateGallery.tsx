@@ -32,18 +32,18 @@ export const TemplateGallery: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<TemplateCategory | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'popular' | 'price-asc' | 'price-desc' | 'name'>('popular');
-  const [visibleCount, setVisibleCount] = useState<number>(8);
+  const [visibleCount, setVisibleCount] = useState<number>(6);
 
   const isFiltering = selectedCategory !== 'All' || searchQuery.trim() !== '';
 
   const handleCategoryChange = (cat: TemplateCategory | 'All') => {
     setSelectedCategory(cat);
-    setVisibleCount(8);
+    setVisibleCount(6);
   };
 
   const handleSearchChange = (val: string) => {
     setSearchQuery(val);
-    setVisibleCount(8);
+    setVisibleCount(6);
   };
 
   const filteredTemplates = useMemo(() => {
@@ -84,13 +84,13 @@ export const TemplateGallery: React.FC = () => {
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto space-y-3 mb-12">
           <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
-            Marketplace Gallery
+            Curated Templates
           </span>
           <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Explore 20 Industry-Optimized Templates
+            Industry-Optimized Website Templates
           </h2>
           <p className="text-sm sm:text-base text-slate-400">
-            Every template is fully customizable, touch-responsive, and engineered for high conversion rates in your specific niche.
+            Handcrafted, mobile-first designs ready for rapid customization and turnkey deployment on global NVMe cloud infrastructure.
           </p>
         </div>
 
@@ -190,18 +190,9 @@ export const TemplateGallery: React.FC = () => {
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       loading="lazy"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
-                      <button
-                        onClick={() => openPreviewModal(template)}
-                        className="bg-slate-900/95 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg border border-slate-700/80 hover:border-slate-600 backdrop-blur transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Live Preview</span>
-                      </button>
-                    </div>
 
                     {/* Top Badges */}
-                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
                       <span className="bg-slate-950/85 backdrop-blur border border-slate-800 text-slate-200 text-xs font-bold px-2.5 py-0.5 rounded-md">
                         {template.category}
                       </span>
@@ -240,16 +231,18 @@ export const TemplateGallery: React.FC = () => {
                     {/* Action Row */}
                     <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
                       <button
+                        type="button"
                         onClick={() => openPreviewModal(template)}
-                        className="text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1 py-1.5 px-3 rounded-xl hover:bg-slate-800 active:bg-slate-700 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                        className="text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 py-2 px-3 rounded-xl hover:bg-slate-800 active:bg-slate-700 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                       >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Preview</span>
+                        <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Live Preview</span>
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => openEnquiryModal(template.id)}
-                        className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1 shadow-md shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold py-2 px-3.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                       >
                         <span>Use This</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -260,19 +253,34 @@ export const TemplateGallery: React.FC = () => {
               ))}
             </div>
 
-            {/* Load More Button for progressive disclosure */}
-            {!isFiltering && visibleCount < filteredTemplates.length && (
+            {/* View All / Curated Showcase Controls */}
+            {!isFiltering && (
               <div className="mt-12 text-center">
-                <button
-                  id="btn-load-more-templates"
-                  onClick={() => setVisibleCount((prev) => prev + 8)}
-                  className="bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-100 border border-slate-700/80 hover:border-slate-600 font-bold text-xs sm:text-sm px-7 py-3.5 rounded-xl shadow-sm hover:shadow transition-all duration-200 cursor-pointer inline-flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                >
-                  <span>Load More Templates</span>
-                  <span className="bg-slate-800 text-indigo-400 border border-slate-700 text-xs px-2 py-0.5 rounded-full font-mono">
-                    {filteredTemplates.length - visibleCount} remaining
-                  </span>
-                </button>
+                {visibleCount < filteredTemplates.length ? (
+                  <button
+                    id="btn-view-all-templates"
+                    onClick={() => setVisibleCount(filteredTemplates.length)}
+                    className="bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-100 border border-slate-700/80 hover:border-slate-600 font-bold text-xs sm:text-sm px-8 py-3.5 rounded-xl shadow-sm hover:shadow transition-all duration-200 cursor-pointer inline-flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                  >
+                    <Layers className="w-4 h-4 text-indigo-400" />
+                    <span>View All 20 Templates</span>
+                    <span className="bg-slate-800 text-slate-300 border border-slate-700 text-xs px-2 py-0.5 rounded-full font-mono ml-1">
+                      +{filteredTemplates.length - visibleCount} more
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    id="btn-collapse-curated-templates"
+                    onClick={() => {
+                      setVisibleCount(6);
+                      const el = document.getElementById('templates');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 font-semibold text-xs px-6 py-2.5 rounded-xl transition-all duration-200 cursor-pointer inline-flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  >
+                    <span>Show Curated Selection (6)</span>
+                  </button>
+                )}
               </div>
             )}
           </>

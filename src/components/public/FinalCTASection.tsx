@@ -34,7 +34,7 @@ export const FinalCTASection: React.FC = () => {
             className="w-full sm:w-auto bg-white hover:bg-slate-100 active:bg-slate-200 text-indigo-950 font-bold text-sm sm:text-base px-7 py-3.5 rounded-xl shadow-xl shadow-black/20 hover:shadow-black/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
           >
             <Sparkles className="w-4 h-4 text-indigo-600" />
-            <span>Get Started with WebRunzo</span>
+            <span>Start Project with WebRunzo</span>
           </button>
 
           <a

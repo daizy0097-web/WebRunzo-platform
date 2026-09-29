@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Sparkles, 
@@ -9,6 +9,7 @@ import {
   UserCheck, 
   Layers,
   ChevronRight,
+  ChevronDown,
   LifeBuoy
 } from 'lucide-react';
 
@@ -23,6 +24,27 @@ export const PublicNavbar: React.FC = () => {
   } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<string>('home');
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+  const companyDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (companyDropdownRef.current && !companyDropdownRef.current.contains(event.target as Node)) {
+        setCompanyDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setCompanyDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     if (publicPage !== 'home') {
@@ -87,6 +109,7 @@ export const PublicNavbar: React.FC = () => {
     setActiveSection('home');
     setPublicPage('home');
     setMobileMenuOpen(false);
+    setCompanyDropdownOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -94,6 +117,7 @@ export const PublicNavbar: React.FC = () => {
     setActiveSection(id);
     setPublicPage('home');
     setMobileMenuOpen(false);
+    setCompanyDropdownOpen(false);
     setTimeout(() => {
       const element = document.getElementById(id);
       if (element) {
@@ -101,6 +125,8 @@ export const PublicNavbar: React.FC = () => {
       }
     }, 50);
   };
+
+  const isCompanyActive = ['about', 'why-webrunzo', 'faq', 'contact'].includes(activeSection);
 
   const getDesktopLinkClass = (section: string) => {
     const isActive = activeSection === section;
@@ -139,12 +165,9 @@ export const PublicNavbar: React.FC = () => {
           </div>
 
           {/* Desktop Navigation Links */}
-          <div className="hidden lg:flex items-center gap-8">
+          <div className="hidden lg:flex items-center gap-7">
             <button onClick={navigateToHome} className={getDesktopLinkClass('home')}>
               Home
-            </button>
-            <button onClick={() => scrollToSection('why-webrunzo')} className={getDesktopLinkClass('why-webrunzo')}>
-              Why Us
             </button>
             <button onClick={() => scrollToSection('services')} className={getDesktopLinkClass('services')}>
               Services
@@ -161,15 +184,81 @@ export const PublicNavbar: React.FC = () => {
             <button onClick={() => scrollToSection('pricing')} className={getDesktopLinkClass('pricing')}>
               Pricing
             </button>
-            <button onClick={() => scrollToSection('about')} className={getDesktopLinkClass('about')}>
-              About
-            </button>
-            <button onClick={() => scrollToSection('faq')} className={getDesktopLinkClass('faq')}>
-              FAQ
-            </button>
-            <button onClick={() => scrollToSection('contact')} className={getDesktopLinkClass('contact')}>
-              Contact
-            </button>
+
+            {/* Consolidated Company Dropdown */}
+            <div className="relative" ref={companyDropdownRef}>
+              <button
+                type="button"
+                id="btn-nav-company-dropdown"
+                onClick={() => setCompanyDropdownOpen((prev) => !prev)}
+                onMouseEnter={() => setCompanyDropdownOpen(true)}
+                className={`cursor-pointer transition-colors duration-150 relative py-1 text-xs inline-flex items-center gap-1.5 ${
+                  isCompanyActive
+                    ? 'text-white font-bold after:absolute after:-bottom-1 after:left-0 after:right-0 after:h-0.5 after:bg-indigo-500 after:rounded-full'
+                    : 'text-slate-400 hover:text-slate-200 font-semibold'
+                }`}
+                aria-expanded={companyDropdownOpen}
+                aria-haspopup="true"
+              >
+                <span>Company</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${companyDropdownOpen ? 'rotate-180 text-white' : 'text-slate-400'}`} />
+              </button>
+
+              {companyDropdownOpen && (
+                <div
+                  onMouseLeave={() => setCompanyDropdownOpen(false)}
+                  className="absolute left-0 mt-2.5 w-44 rounded-xl bg-slate-900 border border-slate-800 shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-top-1"
+                >
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Company
+                  </div>
+                  <button
+                    onClick={() => scrollToSection('about')}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                      activeSection === 'about'
+                        ? 'bg-slate-800 text-indigo-400 font-bold'
+                        : 'text-slate-300 hover:bg-slate-800/70 hover:text-white font-medium'
+                    }`}
+                  >
+                    <span>About</span>
+                    {activeSection === 'about' && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                  </button>
+                  <button
+                    onClick={() => scrollToSection('why-webrunzo')}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                      activeSection === 'why-webrunzo'
+                        ? 'bg-slate-800 text-indigo-400 font-bold'
+                        : 'text-slate-300 hover:bg-slate-800/70 hover:text-white font-medium'
+                    }`}
+                  >
+                    <span>Why Us</span>
+                    {activeSection === 'why-webrunzo' && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                  </button>
+                  <button
+                    onClick={() => scrollToSection('faq')}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                      activeSection === 'faq'
+                        ? 'bg-slate-800 text-indigo-400 font-bold'
+                        : 'text-slate-300 hover:bg-slate-800/70 hover:text-white font-medium'
+                    }`}
+                  >
+                    <span>FAQ</span>
+                    {activeSection === 'faq' && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                  </button>
+                  <button
+                    onClick={() => scrollToSection('contact')}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                      activeSection === 'contact'
+                        ? 'bg-slate-800 text-indigo-400 font-bold'
+                        : 'text-slate-300 hover:bg-slate-800/70 hover:text-white font-medium'
+                    }`}
+                  >
+                    <span>Contact</span>
+                    {activeSection === 'contact' && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Action CTA & Portal Links */}
@@ -223,39 +312,56 @@ export const PublicNavbar: React.FC = () => {
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-6 py-5 space-y-2 text-sm shadow-2xl animate-in fade-in slide-in-from-top-2">
-          <button onClick={navigateToHome} className={getMobileLinkClass('home')}>
-            Home
-          </button>
-          <button onClick={() => scrollToSection('why-webrunzo')} className={getMobileLinkClass('why-webrunzo')}>
-            Why WebRunzo
-          </button>
-          <button onClick={() => scrollToSection('services')} className={getMobileLinkClass('services')}>
-            Services
-          </button>
-          <button onClick={() => scrollToSection('how-it-works')} className={getMobileLinkClass('how-it-works')}>
-            How It Works
-          </button>
-          <button onClick={() => scrollToSection('templates')} className={`${getMobileLinkClass('templates')} flex items-center justify-between`}>
-            <span>Templates</span>
-            <span className="text-[10px] font-medium leading-none px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60">
-              20
-            </span>
-          </button>
-          <button onClick={() => scrollToSection('pricing')} className={getMobileLinkClass('pricing')}>
-            Pricing Plans
-          </button>
-          <button onClick={() => scrollToSection('about')} className={getMobileLinkClass('about')}>
-            About WebRunzo
-          </button>
-          <button onClick={() => scrollToSection('faq')} className={getMobileLinkClass('faq')}>
-            FAQ
-          </button>
-          <button onClick={() => scrollToSection('contact')} className={getMobileLinkClass('contact')}>
-            Contact Us
-          </button>
+        <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-6 py-5 space-y-4 text-sm shadow-2xl animate-in fade-in slide-in-from-top-2">
+          {/* Group 1: Navigation Core */}
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pb-1">
+              Navigation
+            </div>
+            <button onClick={navigateToHome} className={getMobileLinkClass('home')}>
+              Home
+            </button>
+            <button onClick={() => scrollToSection('services')} className={getMobileLinkClass('services')}>
+              Services
+            </button>
+            <button onClick={() => scrollToSection('how-it-works')} className={getMobileLinkClass('how-it-works')}>
+              How It Works
+            </button>
+            <button onClick={() => scrollToSection('templates')} className={`${getMobileLinkClass('templates')} flex items-center justify-between`}>
+              <span>Templates</span>
+              <span className="text-[10px] font-medium leading-none px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                20
+              </span>
+            </button>
+            <button onClick={() => scrollToSection('pricing')} className={getMobileLinkClass('pricing')}>
+              Pricing Plans
+            </button>
+          </div>
 
-          <div className="pt-4 border-t border-slate-800 space-y-2">
+          {/* Group 2: Company */}
+          <div className="space-y-1 pt-3 border-t border-slate-800/80">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pb-1">
+              Company
+            </div>
+            <button onClick={() => scrollToSection('about')} className={getMobileLinkClass('about')}>
+              About WebRunzo
+            </button>
+            <button onClick={() => scrollToSection('why-webrunzo')} className={getMobileLinkClass('why-webrunzo')}>
+              Why WebRunzo
+            </button>
+            <button onClick={() => scrollToSection('faq')} className={getMobileLinkClass('faq')}>
+              FAQ
+            </button>
+            <button onClick={() => scrollToSection('contact')} className={getMobileLinkClass('contact')}>
+              Contact Us
+            </button>
+          </div>
+
+          {/* Group 3: Support & Portals */}
+          <div className="space-y-2 pt-3 border-t border-slate-800/80">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pb-1">
+              Support & Portals
+            </div>
             <button
               id="btn-nav-mobile-support-concierge"
               onClick={() => {

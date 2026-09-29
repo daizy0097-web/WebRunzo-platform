@@ -34,6 +34,7 @@ export const PricingSection: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
           {plans.map((plan) => {
             const isPopular = plan.id === 'plan-pro' || plan.popularBadge;
+            const isVip = plan.id === 'plan-business' || plan.name.toLowerCase().includes('vip');
             const price = plan.annualPrice || plan.monthlyPrice;
 
             return (
@@ -42,6 +43,8 @@ export const PricingSection: React.FC = () => {
                 className={`relative rounded-2xl p-7 sm:p-8 flex flex-col h-full transition-all duration-200 ${
                   isPopular
                     ? 'bg-slate-900 text-white shadow-2xl ring-2 ring-indigo-500 border border-indigo-500/40'
+                    : isVip
+                    ? 'bg-gradient-to-b from-slate-900 via-slate-900 to-indigo-950/25 text-white border border-indigo-500/30 shadow-xl shadow-indigo-950/20 hover:border-indigo-500/50'
                     : 'bg-slate-900/90 text-white border border-slate-800 shadow-xl hover:border-slate-700'
                 }`}
               >
@@ -53,59 +56,68 @@ export const PricingSection: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex-1 flex flex-col">
-                  {/* Plan Name */}
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-bold text-white uppercase tracking-wide">
-                      {plan.name}
-                    </h3>
-                  </div>
-
-                  <p className="text-sm mb-6 text-slate-400 leading-relaxed min-h-[36px]">
-                    {plan.description}
-                  </p>
-
-                  {/* Price Block */}
-                  <div className="mb-6 pb-6 border-b border-slate-800">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-3xl sm:text-4xl font-extrabold tracking-tight font-mono text-white">
-                        {formatINR(price, settings?.currencySymbol)}
-                      </span>
+                <div className="flex-1 flex flex-col justify-between">
+                  <div>
+                    {/* Plan Name */}
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-lg font-bold text-white uppercase tracking-wide">
+                        {plan.name}
+                      </h3>
+                      {isVip && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                          VIP Tier
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs mt-1.5 text-slate-400 font-medium flex items-center gap-1">
-                      <Zap className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Turnkey website build & setup</span>
-                    </div>
-                  </div>
 
-                  {/* Features List */}
-                  <div className="space-y-3.5 mb-8 flex-1">
-                    <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      What's Included:
-                    </div>
-                    {(plan.features || []).map((feat, fIdx) => (
-                      <div key={fIdx} className="flex items-start gap-2.5 text-xs sm:text-sm leading-relaxed">
-                        <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
-                        <span className="text-slate-300">
-                          {feat}
+                    <p className="text-sm mb-6 text-slate-400 leading-relaxed min-h-[36px]">
+                      {plan.description}
+                    </p>
+
+                    {/* Price Block */}
+                    <div className="mb-6 pb-6 border-b border-slate-800">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-3xl sm:text-4xl font-extrabold tracking-tight font-mono text-white">
+                          {formatINR(price, settings?.currencySymbol)}
                         </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <div className="text-xs mt-1.5 text-slate-400 font-medium flex items-center gap-1">
+                        <Zap className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Turnkey website build & setup</span>
+                      </div>
+                    </div>
 
-                {/* Clear CTA Button */}
-                <button
-                  onClick={() => openEnquiryModal(undefined, plan.id)}
-                  className={`w-full mt-auto py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
-                    isPopular
-                      ? 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0'
-                      : 'bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm hover:shadow'
-                  }`}
-                >
-                  <span>Get Started</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                    {/* Features List */}
+                    <div className="space-y-3 sm:space-y-3.5 mb-6">
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        What's Included:
+                      </div>
+                      {(plan.features || []).map((feat, fIdx) => (
+                        <div key={fIdx} className="flex items-start gap-2.5 text-xs sm:text-sm leading-relaxed">
+                          <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                          <span className="text-slate-300">
+                            {feat}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Clear CTA Button */}
+                  <button
+                    onClick={() => openEnquiryModal(undefined, plan.id)}
+                    className={`w-full mt-6 py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+                      isPopular
+                        ? 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0'
+                        : isVip
+                        ? 'bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white border border-indigo-500/40 hover:border-indigo-400/60 shadow-md shadow-indigo-950/20'
+                        : 'bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm hover:shadow'
+                    }`}
+                  >
+                    <span>Get Started</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             );
           })}

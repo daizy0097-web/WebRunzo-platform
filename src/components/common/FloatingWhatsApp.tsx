@@ -113,7 +113,7 @@ export const FloatingWhatsApp: React.FC = () => {
       ref={widgetRef}
       id="support-concierge-widget"
       aria-label="Support & Concierge Quick Access" 
-      className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 [bottom:calc(1rem+env(safe-area-inset-bottom,0px))] [right:calc(1rem+env(safe-area-inset-right,0px))]"
+      className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-50 [bottom:calc(1.25rem+env(safe-area-inset-bottom,0px))] [right:calc(1.25rem+env(safe-area-inset-right,0px))]"
     >
       {/* Support & Concierge Floating Interactive Panel */}
       {isOpen && (
@@ -275,24 +275,24 @@ export const FloatingWhatsApp: React.FC = () => {
         data-testid="btn-support-concierge"
         type="button"
         onClick={toggleOpen}
-        className="group relative inline-flex items-center justify-center gap-2 w-11 h-11 md:w-auto md:h-auto md:px-3.5 md:py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs shadow-xl shadow-emerald-950/40 hover:shadow-emerald-600/40 transition-all duration-150 active:scale-95 cursor-pointer touch-manipulation select-none border border-emerald-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+        className="group relative inline-flex items-center justify-center gap-2 w-11 h-11 md:w-auto md:h-auto md:px-3.5 md:py-2.5 rounded-full bg-slate-900/95 hover:bg-slate-800 active:bg-slate-950 text-slate-200 hover:text-white font-bold text-xs shadow-xl shadow-slate-950/60 hover:shadow-slate-900/80 transition-all duration-150 active:scale-95 cursor-pointer touch-manipulation select-none border border-slate-700/80 hover:border-slate-600 backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         aria-label="Support & Concierge"
         title="Support & Concierge Desk"
       >
         {/* Pulsing Status Dot - Desktop only */}
         <span className="relative hidden md:flex h-2 w-2 shrink-0">
           {availability.dotPulse && (
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
           )}
 
           <span className={`relative inline-flex rounded-full h-2 w-2 ${triggerDotColor}`}></span>
         </span>
 
         {/* Support Icon */}
-        <LifeBuoy className="w-5 h-5 md:w-4 md:h-4 text-white shrink-0 group-hover:rotate-45 transition-transform duration-300" />
+        <LifeBuoy className="w-5 h-5 md:w-4 md:h-4 text-slate-300 group-hover:text-white shrink-0 group-hover:rotate-45 transition-transform duration-300" />
 
         {/* Compact Label - Desktop/PC only */}
-        <span className="hidden md:inline font-extrabold text-white tracking-normal whitespace-nowrap">
+        <span className="hidden md:inline font-bold text-slate-200 group-hover:text-white tracking-normal whitespace-nowrap">
           Support
         </span>
       </button>
