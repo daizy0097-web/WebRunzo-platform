@@ -66,7 +66,7 @@ export const PublicFooter: React.FC = () => {
 
           {/* Col 3: Templates */}
           <div className="space-y-3">
-            <div className="font-bold text-white uppercase text-xs tracking-wider">Top Niches</div>
+            <div className="font-bold text-white uppercase text-xs tracking-wider">Template Niches</div>
             <ul className="space-y-2">
               <li><button onClick={() => scrollTo('templates')} className="hover:text-white transition">Corporate & Business</button></li>
               <li><button onClick={() => scrollTo('templates')} className="hover:text-white transition">Restaurants & Bars</button></li>
@@ -78,10 +78,10 @@ export const PublicFooter: React.FC = () => {
             </ul>
           </div>
 
-          {/* Col 4: Portals & Legal */}
+          {/* Col 4: Portals */}
           <div className="space-y-3">
             <div className="font-bold text-white uppercase text-xs tracking-wider">
-              Client Portal & Legal
+              Client Access
             </div>
             <ul className="space-y-2">
               <li>
@@ -105,7 +105,16 @@ export const PublicFooter: React.FC = () => {
                   <span>Support & Concierge Desk</span>
                 </button>
               </li>
-              <li className="pt-2">
+            </ul>
+          </div>
+
+          {/* Col 5: Legal */}
+          <div className="space-y-3">
+            <div className="font-bold text-white uppercase text-xs tracking-wider">
+              Legal & Compliance
+            </div>
+            <ul className="space-y-2">
+              <li>
                 <button
                   id="btn-footer-privacy-policy"
                   onClick={() => {

@@ -143,6 +143,21 @@ app.use(
     }
   })
 );
+app.use("/api", (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  next();
+});
 var createRateLimiter = (options) => {
   const { windowMs, max, message } = options;
   const store = /* @__PURE__ */ new Map();
@@ -667,12 +682,30 @@ app.post("/api/admin/client-auth/send-link", async (req, res) => {
         error: adminCheck.error || "Supabase admin service key is not configured on the server."
       });
     }
+    const CANONICAL_APP_URL = "https://web-runzo-platform-uo3h.vercel.app";
+    const isAiStudioUrl = (url) => {
+      if (!url || typeof url !== "string") return true;
+      const lower = url.trim().toLowerCase();
+      return !lower || lower.includes("aistudio.google.com") || lower.includes("googleusercontent.com");
+    };
     const originHeader = req.headers.origin || "";
     const forwardedHost = req.headers["x-forwarded-host"] || req.headers.host || "";
     const forwardedProto = req.headers["x-forwarded-proto"] || "https";
     const derivedHostUrl = forwardedHost ? `${forwardedProto}://${forwardedHost}` : "";
     const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "";
-    const appUrl = (process.env.APP_URL || originHeader || derivedHostUrl || vercelUrl || "http://localhost:3000").replace(/\/+$/, "");
+    let candidateAppUrl = "";
+    if (process.env.APP_URL && !isAiStudioUrl(process.env.APP_URL)) {
+      candidateAppUrl = process.env.APP_URL;
+    } else if (originHeader && !isAiStudioUrl(originHeader)) {
+      candidateAppUrl = originHeader;
+    } else if (derivedHostUrl && !isAiStudioUrl(derivedHostUrl)) {
+      candidateAppUrl = derivedHostUrl;
+    } else if (vercelUrl && !isAiStudioUrl(vercelUrl)) {
+      candidateAppUrl = vercelUrl;
+    } else {
+      candidateAppUrl = CANONICAL_APP_URL;
+    }
+    const appUrl = candidateAppUrl.replace(/\/+$/, "");
     const redirectUrl = `${appUrl}/`;
     let clientUserId = customer.user_id;
     let authUserExists = false;
@@ -742,59 +775,37 @@ app.post("/api/admin/client-auth/send-link", async (req, res) => {
         console.warn("Note updating user metadata on force reset:", updErr?.message);
       }
     }
-    let linkData = null;
-    let linkErr = null;
+    const [localPart, domainPart] = clientEmail.split("@");
+    const maskedLocal = !localPart || localPart.length <= 2 ? localPart ? localPart[0] + "*" : "***" : localPart[0] + "*".repeat(Math.min(localPart.length - 2, 4)) + localPart.slice(-1);
+    const maskedEmail = domainPart ? `${maskedLocal}@${domainPart}` : "client email";
+    let emailDispatchErr = null;
     try {
-      const res1 = await supabaseAdmin.auth.admin.generateLink({
-        type: "recovery",
-        email: clientEmail,
-        options: { redirectTo: redirectUrl }
+      const { error: resetErr } = await supabaseAdmin.auth.resetPasswordForEmail(clientEmail, {
+        redirectTo: redirectUrl
       });
-      linkData = res1.data;
-      linkErr = res1.error;
-    } catch (genErr1) {
-      linkErr = genErr1;
-    }
-    if (linkErr) {
-      console.warn("generateLink with redirectTo failed, attempting fallback without redirectTo:", linkErr.message);
-      try {
-        const res2 = await supabaseAdmin.auth.admin.generateLink({
-          type: "recovery",
-          email: clientEmail
-        });
-        if (!res2.error && res2.data) {
-          linkData = res2.data;
-          linkErr = null;
-        }
-      } catch (genErr2) {
-        console.warn("generateLink fallback error:", genErr2?.message);
+      if (resetErr) {
+        emailDispatchErr = resetErr;
       }
+    } catch (err) {
+      emailDispatchErr = err;
     }
-    if (linkErr && actionType === "setup") {
-      console.warn("Recovery link failed for setup action, attempting invite link:", linkErr.message);
-      try {
-        const res3 = await supabaseAdmin.auth.admin.generateLink({
-          type: "invite",
-          email: clientEmail,
-          options: { redirectTo: redirectUrl }
+    if (emailDispatchErr) {
+      console.error("Supabase resetPasswordForEmail error:", emailDispatchErr);
+      const rawMsg = (emailDispatchErr.message || "").toLowerCase();
+      const isRateLimit = rawMsg.includes("rate limit") || rawMsg.includes("security purposes") || rawMsg.includes("too many requests") || emailDispatchErr.status === 429 || emailDispatchErr.code === "over_email_send_rate_limit";
+      if (isRateLimit) {
+        return res.status(429).json({
+          success: false,
+          code: "EMAIL_RATE_LIMIT",
+          error: `Email delivery throttled by auth provider for ${maskedEmail}. Please wait 60 seconds before sending another setup email.`
         });
-        if (!res3.error && res3.data) {
-          linkData = res3.data;
-          linkErr = null;
-        }
-      } catch (genErr3) {
-        console.warn("generateLink invite fallback error:", genErr3?.message);
       }
-    }
-    if (linkErr) {
-      console.error("generateLink error in send-link:", linkErr);
       return res.status(500).json({
         success: false,
-        code: linkErr.code || "LINK_GENERATION_FAILED",
-        error: `Failed to generate secure setup link: ${linkErr.message || "Supabase Auth rejected link generation."}`
+        code: emailDispatchErr.code || "EMAIL_DELIVERY_FAILED",
+        error: `Failed to deliver setup email to ${maskedEmail}: ${emailDispatchErr.message || "Supabase Auth rejected delivery."}`
       });
     }
-    const actionLink = linkData?.properties?.action_link;
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const updatedCustomContent = {
       ...customer.custom_content || {},
@@ -808,7 +819,7 @@ app.post("/api/admin/client-auth/send-link", async (req, res) => {
       {
         id: `act-${Date.now()}`,
         date: nowIso.split("T")[0],
-        action: actionType === "reset" ? "Admin forced password reset for ownership handover. Existing access invalidated." : "Admin generated fresh password setup link for client.",
+        action: actionType === "reset" ? `Admin forced password reset. Setup email dispatched to ${maskedEmail}.` : `Admin dispatched password setup email to ${maskedEmail}.`,
         user: callerProfile.full_name || "Admin"
       },
       ...Array.isArray(customer.activity_history) ? customer.activity_history : []
@@ -820,10 +831,11 @@ app.post("/api/admin/client-auth/send-link", async (req, res) => {
     }).eq("id", customer.id);
     return res.json({
       success: true,
-      actionLink: actionLink || void 0,
+      emailSent: true,
+      maskedEmail,
       passwordSetupStatus: "Pending",
       lastLinkSentAt: nowIso,
-      message: actionType === "reset" ? `Password reset link created for ${clientEmail}. Existing sessions revoked.` : `Password setup link generated for ${clientEmail}.`
+      message: actionType === "reset" ? `Password reset link sent to ${maskedEmail}. Existing sessions revoked.` : `Password setup link sent to ${maskedEmail}.`
     });
   } catch (err) {
     console.error("Error in send-link API:", err);
@@ -2210,7 +2222,7 @@ async function startServer() {
     console.log(`WebRunzo Full-Stack Server running on port ${PORT}`);
   });
 }
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && !process.env.VERCEL_ENV && !process.env.NOW_REGION) {
   startServer();
 }
 var server_default = app;

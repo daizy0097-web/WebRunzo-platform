@@ -39,29 +39,29 @@ export const PricingSection: React.FC = () => {
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-2xl p-7 sm:p-8 flex flex-col justify-between transition-all duration-200 ${
+                className={`relative rounded-2xl p-7 sm:p-8 flex flex-col h-full transition-all duration-200 ${
                   isPopular
-                    ? 'bg-slate-900 text-white shadow-2xl ring-2 ring-indigo-500 md:-translate-y-2 border border-indigo-500/40'
+                    ? 'bg-slate-900 text-white shadow-2xl ring-2 ring-indigo-500 border border-indigo-500/40'
                     : 'bg-slate-900/90 text-white border border-slate-800 shadow-xl hover:border-slate-700'
                 }`}
               >
                 {/* Most Popular Badge */}
                 {isPopular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-xs font-extrabold px-4 py-1 rounded-full uppercase tracking-wider shadow-lg shadow-indigo-500/30 flex items-center gap-1.5 whitespace-nowrap">
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-xs font-extrabold px-4 py-1 rounded-full uppercase tracking-wider shadow-lg shadow-indigo-500/30 flex items-center gap-1.5 whitespace-nowrap z-10">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>MOST POPULAR</span>
                   </div>
                 )}
 
-                <div>
+                <div className="flex-1 flex flex-col">
                   {/* Plan Name */}
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xl font-extrabold text-white uppercase tracking-wide">
+                    <h3 className="text-lg font-bold text-white uppercase tracking-wide">
                       {plan.name}
                     </h3>
                   </div>
 
-                  <p className="text-xs mb-6 text-slate-400 leading-relaxed min-h-[32px]">
+                  <p className="text-sm mb-6 text-slate-400 leading-relaxed min-h-[36px]">
                     {plan.description}
                   </p>
 
@@ -79,14 +79,14 @@ export const PricingSection: React.FC = () => {
                   </div>
 
                   {/* Features List */}
-                  <div className="space-y-3.5 mb-8">
+                  <div className="space-y-3.5 mb-8 flex-1">
                     <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
                       What's Included:
                     </div>
                     {(plan.features || []).map((feat, fIdx) => (
                       <div key={fIdx} className="flex items-start gap-2.5 text-xs sm:text-sm leading-relaxed">
                         <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
-                        <span className={`${feat.includes('Unlimited Revisions') ? 'text-indigo-300 font-semibold' : 'text-slate-300'}`}>
+                        <span className="text-slate-300">
                           {feat}
                         </span>
                       </div>
@@ -97,7 +97,7 @@ export const PricingSection: React.FC = () => {
                 {/* Clear CTA Button */}
                 <button
                   onClick={() => openEnquiryModal(undefined, plan.id)}
-                  className={`w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+                  className={`w-full mt-auto py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
                     isPopular
                       ? 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0'
                       : 'bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm hover:shadow'

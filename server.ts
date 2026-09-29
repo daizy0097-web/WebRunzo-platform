@@ -917,19 +917,38 @@ app.post('/api/admin/client-auth/send-link', async (req, res) => {
       });
     }
 
+    const CANONICAL_APP_URL = 'https://web-runzo-platform-uo3h.vercel.app';
+
+    const isAiStudioUrl = (url: string | undefined | null): boolean => {
+      if (!url || typeof url !== 'string') return true;
+      const lower = url.trim().toLowerCase();
+      return (
+        !lower ||
+        lower.includes('aistudio.google.com') ||
+        lower.includes('googleusercontent.com')
+      );
+    };
+
     const originHeader = (req.headers.origin as string) || '';
     const forwardedHost = (req.headers['x-forwarded-host'] as string) || (req.headers.host as string) || '';
     const forwardedProto = (req.headers['x-forwarded-proto'] as string) || 'https';
     const derivedHostUrl = forwardedHost ? `${forwardedProto}://${forwardedHost}` : '';
     const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
 
-    const appUrl = (
-      process.env.APP_URL ||
-      originHeader ||
-      derivedHostUrl ||
-      vercelUrl ||
-      'http://localhost:3000'
-    ).replace(/\/+$/, '');
+    let candidateAppUrl = '';
+    if (process.env.APP_URL && !isAiStudioUrl(process.env.APP_URL)) {
+      candidateAppUrl = process.env.APP_URL;
+    } else if (originHeader && !isAiStudioUrl(originHeader)) {
+      candidateAppUrl = originHeader;
+    } else if (derivedHostUrl && !isAiStudioUrl(derivedHostUrl)) {
+      candidateAppUrl = derivedHostUrl;
+    } else if (vercelUrl && !isAiStudioUrl(vercelUrl)) {
+      candidateAppUrl = vercelUrl;
+    } else {
+      candidateAppUrl = CANONICAL_APP_URL;
+    }
+
+    const appUrl = candidateAppUrl.replace(/\/+$/, '');
 
     // Note: Supabase GoTrue Auth rejects redirect URLs containing fragment/hash (#).
     // Using clean base URL (${appUrl}/) so Supabase successfully appends #access_token=...&type=recovery.

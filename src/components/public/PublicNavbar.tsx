@@ -121,7 +121,7 @@ export const PublicNavbar: React.FC = () => {
   };
 
   return (
-    <nav className="bg-slate-950/85 backdrop-blur-md sticky top-[41px] z-40 border-b border-slate-800/80 transition-all">
+    <nav className="bg-slate-950/85 backdrop-blur-md sticky top-0 z-40 border-b border-slate-800/80 transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           
@@ -134,7 +134,7 @@ export const PublicNavbar: React.FC = () => {
               <span className="text-lg sm:text-xl font-bold text-white tracking-tight leading-none">
                 Web<span className="text-indigo-400 font-semibold">Runzo</span>
               </span>
-              <span className="hidden sm:block text-xs text-slate-400 font-medium tracking-wider uppercase mt-0.5">Turnkey Websites</span>
+              <span className="hidden sm:block text-xs text-slate-400 font-medium tracking-wide mt-0.5">Turnkey Websites</span>
             </div>
           </div>
 
@@ -152,9 +152,11 @@ export const PublicNavbar: React.FC = () => {
             <button onClick={() => scrollToSection('how-it-works')} className={getDesktopLinkClass('how-it-works')}>
               How It Works
             </button>
-            <button onClick={() => scrollToSection('templates')} className={`${getDesktopLinkClass('templates')} flex items-center gap-1`}>
+            <button onClick={() => scrollToSection('templates')} className={`${getDesktopLinkClass('templates')} inline-flex items-center gap-2`}>
               <span>Templates</span>
-              <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold px-2 py-0.5 rounded-full">20</span>
+              <span className="text-[10px] font-medium leading-none px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60 ml-0.5">
+                20
+              </span>
             </button>
             <button onClick={() => scrollToSection('pricing')} className={getDesktopLinkClass('pricing')}>
               Pricing
@@ -196,7 +198,7 @@ export const PublicNavbar: React.FC = () => {
               className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-4 sm:px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Get Started</span>
+              <span>Start Project</span>
             </button>
           </div>
 
@@ -206,7 +208,7 @@ export const PublicNavbar: React.FC = () => {
               onClick={() => openEnquiryModal()}
               className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-md shadow-indigo-600/30 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
-              Get Started
+              Start Project
             </button>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -235,8 +237,10 @@ export const PublicNavbar: React.FC = () => {
             How It Works
           </button>
           <button onClick={() => scrollToSection('templates')} className={`${getMobileLinkClass('templates')} flex items-center justify-between`}>
-            <span>Template Gallery</span>
-            <span className="bg-indigo-500/20 text-indigo-300 text-xs px-2 py-0.5 rounded-full">20 Demo Templates</span>
+            <span>Templates</span>
+            <span className="text-[10px] font-medium leading-none px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60">
+              20
+            </span>
           </button>
           <button onClick={() => scrollToSection('pricing')} className={getMobileLinkClass('pricing')}>
             Pricing Plans

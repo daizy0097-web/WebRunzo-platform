@@ -61,8 +61,8 @@ export const AboutSection: React.FC = () => {
               <div className="w-9 h-9 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
                 <HeartHandshake className="w-5 h-5" />
               </div>
-              <h3 className="font-bold text-sm text-white">Honest, Predictable Pricing</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <h3 className="font-bold text-base text-white">Honest, Predictable Pricing</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">
                 No hidden hourly bills or hostage domains. Everything is bundled into transparent packages.
               </p>
             </div>
@@ -71,8 +71,8 @@ export const AboutSection: React.FC = () => {
               <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
                 <ShieldCheck className="w-5 h-5" />
               </div>
-              <h3 className="font-bold text-sm text-white">Zero Maintenance Burden</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <h3 className="font-bold text-base text-white">Zero Maintenance Burden</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">
                 We handle code updates, SSL certificates, and security patches 24/7 so you never get hacked or go offline.
               </p>
             </div>
@@ -81,8 +81,8 @@ export const AboutSection: React.FC = () => {
               <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/20">
                 <Globe2 className="w-5 h-5" />
               </div>
-              <h3 className="font-bold text-sm text-white">Global Edge Infrastructure</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <h3 className="font-bold text-base text-white">Global Edge Infrastructure</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">
                 Hosted across global NVMe cloud clusters for sub-second page loads anywhere in the world.
               </p>
             </div>

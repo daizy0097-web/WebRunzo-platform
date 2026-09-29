@@ -10,7 +10,7 @@ import {
   Layers, 
   Tag, 
   Check, 
-  SlidersHorizontal,
+  ArrowDownUp,
   Star
 } from 'lucide-react';
 
@@ -95,7 +95,7 @@ export const TemplateGallery: React.FC = () => {
         </div>
 
         {/* Controls Bar: Search, Category Filters, Sort */}
-        <div className="bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-800 shadow-xl mb-10 space-y-4">
+        <div className="mb-6 space-y-4">
           
           {/* Top Row: Search & Sort */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -107,7 +107,7 @@ export const TemplateGallery: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search by template name, niche, or feature..."
-                className="w-full text-xs pl-10 pr-4 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-950 text-white placeholder-slate-500"
+                className="w-full text-xs pl-10 pr-4 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-900 text-white placeholder-slate-500 shadow-sm"
               />
               {searchQuery && (
                 <button
@@ -121,12 +121,12 @@ export const TemplateGallery: React.FC = () => {
 
             {/* Sort Dropdown */}
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end text-xs">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+              <ArrowDownUp className="w-3.5 h-3.5 text-slate-400" />
               <span className="text-slate-400 font-medium">Sort by:</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="text-xs p-2 rounded-xl border border-slate-800 bg-slate-950 font-semibold text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="text-xs p-2 rounded-xl border border-slate-800 bg-slate-900 font-semibold text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-sm cursor-pointer"
               >
                 <option value="popular">Most Popular</option>
                 <option value="name">Name (A-Z)</option>
@@ -137,7 +137,7 @@ export const TemplateGallery: React.FC = () => {
           </div>
 
           {/* Bottom Row: Category Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 scrollbar-thin">
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-2 pt-1 scrollbar-thin">
             {CATEGORIES.map((cat) => (
               <button
                 key={cat}
@@ -145,7 +145,7 @@ export const TemplateGallery: React.FC = () => {
                 className={`whitespace-nowrap px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                   selectedCategory === cat
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
-                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-white'
+                    : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
                 }`}
               >
                 {cat}

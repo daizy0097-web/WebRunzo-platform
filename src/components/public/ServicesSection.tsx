@@ -91,7 +91,7 @@ export const ServicesSection: React.FC = () => {
                     <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
                       <Icon className="w-5 h-5" />
                     </div>
-                    <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    <span className="text-xs font-bold uppercase px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
                       {s.badge}
                     </span>
                   </div>
